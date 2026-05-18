@@ -1,4 +1,4 @@
-import parser from 'cron-parser';
+import { CronExpressionParser } from 'cron-parser';
 
 export function getNextRun(cronExpr: string): string | null {
   if (!cronExpr.trim()) {
@@ -6,7 +6,7 @@ export function getNextRun(cronExpr: string): string | null {
   }
 
   try {
-    const interval = parser.parseExpression(cronExpr, { currentDate: new Date() });
+    const interval = CronExpressionParser.parse(cronExpr, { currentDate: new Date() });
     return interval.next().toString();
   } catch {
     return null;
@@ -20,7 +20,7 @@ export function isCronDue(cronExpr: string): boolean {
 
   try {
     const lastMinute = new Date(Date.now() - 30_000);
-    const interval = parser.parseExpression(cronExpr, { currentDate: lastMinute });
+    const interval = CronExpressionParser.parse(cronExpr, { currentDate: lastMinute });
     const next = interval.next();
     const now = Date.now();
     const diff = next.getTime() - now;

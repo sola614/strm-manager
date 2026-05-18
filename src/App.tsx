@@ -101,6 +101,8 @@ function AdminApp() {
     return tasks.filter((task) => task.serviceId === serviceFilter);
   }, [serviceFilter, tasks]);
 
+  const hasRunningRuns = runs.some((run) => run.status === 'running');
+
   useEffect(() => {
     const token = getStoredToken();
     if (!token) {
@@ -119,6 +121,53 @@ function AdminApp() {
     handleHashChange();
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
+
+  useEffect(() => {
+    if (!user || !hasRunningRuns) return;
+
+    let cancelled = false;
+    const pollRuns = async () => {
+      try {
+        const [nextRuns, nextTasks] = await Promise.all([getRuns(), getTasks()]);
+        if (!cancelled) {
+          setRuns(nextRuns);
+          setTasks(nextTasks);
+        }
+      } catch (error) {
+        console.error('Failed to refresh running task state:', error);
+      }
+    };
+
+    const timer = window.setInterval(pollRuns, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [hasRunningRuns, user]);
+
+  useEffect(() => {
+    if (selectedRun) {
+      const updatedRun = runs.find((run) => run.id === selectedRun.id);
+      if (updatedRun && updatedRun !== selectedRun) {
+        setSelectedRun(updatedRun);
+      }
+    }
+
+    if (latestRunLog) {
+      const updatedLatestRun = runs.find((run) => run.id === latestRunLog.id);
+      if (updatedLatestRun && updatedLatestRun !== latestRunLog) {
+        setLatestRunLog(updatedLatestRun);
+      }
+      return;
+    }
+
+    if (latestLogModalOpen && logTask) {
+      const latestTaskRun = runs.find((run) => run.taskId === logTask.id);
+      if (latestTaskRun) {
+        setLatestRunLog(latestTaskRun);
+      }
+    }
+  }, [latestLogModalOpen, latestRunLog, logTask, runs, selectedRun]);
 
   function changeView(view: ActiveView) {
     setActiveView(view);
@@ -156,6 +205,13 @@ function AdminApp() {
     const items = await getRuns();
     setRuns(items);
     return items;
+  }
+
+  async function refreshRunsAndTasks() {
+    const [nextRuns, nextTasks] = await Promise.all([getRuns(), getTasks()]);
+    setRuns(nextRuns);
+    setTasks(nextTasks);
+    return nextRuns;
   }
 
   function handleAuthSuccess(result: AuthResponse) {
@@ -466,7 +522,7 @@ function AdminApp() {
           setRunTaskFilter('all');
         }}
         onTaskFilterChange={setRunTaskFilter}
-        onRefresh={refreshRuns}
+        onRefresh={refreshRunsAndTasks}
         onOpenLog={(run) => {
           setSelectedRun(run);
           setRunLogModalOpen(true);

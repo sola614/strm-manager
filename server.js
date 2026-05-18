@@ -260,8 +260,9 @@ app.post('/api/backup/import', requireAuth(), upload.single('file'), (req, res) 
 
 if (fs.existsSync(path.join(DIST_PATH, 'index.html'))) {
   app.use(express.static(DIST_PATH));
-  app.get('*', (req, res, next) => {
+  app.use((req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     res.sendFile(path.join(DIST_PATH, 'index.html'));
   });
 }

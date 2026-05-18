@@ -5,9 +5,10 @@ import {
   InboxOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
+import type { ReactNode } from 'react';
 import { ActiveView, OpenlistServiceFormValues, SyncTaskFormValues } from '../../types';
 
-export const ADMIN_VERSION = 'v1.1.0';
+export const ADMIN_VERSION = 'v1.0.0';
 
 export const defaultServiceForm: OpenlistServiceFormValues = {
   name: '',
@@ -37,7 +38,7 @@ export const viewMeta: Record<
     title: string;
     description: string;
     menuLabel: string;
-    icon: JSX.Element;
+    icon: ReactNode;
   }
 > = {
   dashboard: {

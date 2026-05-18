@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   strm-manager:
     build: .
@@ -12,6 +10,8 @@ services:
       DATABASE_PATH: /app/data/database.sqlite
     volumes:
       - strm-manager-data:/app/data
+      # Add your STRM output directory here, then use the container path in task targetPath.
+      # - D:/media/strm:/media/strm
     restart: unless-stopped
 
 volumes:
