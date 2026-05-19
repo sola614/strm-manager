@@ -49,10 +49,10 @@ export function RunDetailPage(props: RunDetailPageProps) {
         )}
       </Card>
 
-      <Card className="module-card" title="详细日志">
+      <Card className="module-card run-detail-log-card" title="详细日志">
         {props.run ? (
           props.run.details.length > 0 ? (
-            <Space direction="vertical" size={6} style={{ width: '100%' }}>
+            <Space direction="vertical" size={6} className="run-detail-log-list">
               {props.run.details.map((detail, index) => (
                 <Text key={`${props.run?.id}-${index}`}>- {detail}</Text>
               ))}

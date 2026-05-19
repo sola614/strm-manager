@@ -124,6 +124,23 @@ button {
   border-bottom: 1px solid #f0f3f8;
 }
 
+.run-detail-log-card .ant-card-body {
+  padding: 0 !important;
+}
+
+.run-detail-log-list {
+  width: 100%;
+  max-height: calc(100vh - 430px);
+  min-height: 220px;
+  overflow: auto;
+  padding: 18px 24px;
+}
+
+.run-detail-log-list .ant-typography {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
 .login-shell {
   min-height: 100vh;
   display: grid;
@@ -158,6 +175,11 @@ button {
 
   .admin-content {
     padding: 16px !important;
+  }
+
+  .run-detail-log-list {
+    max-height: 48vh;
+    padding: 14px 16px;
   }
 
   .brand-panel {

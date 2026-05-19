@@ -7,7 +7,7 @@
 - OpenList 服务管理
 - 定时任务管理
 - 手动触发任务
-- 运行记录与日志详情查看
+- 运行记录与独立日志详情页查看
 - 配置备份与恢复
 - 首次登录强制修改默认密码
 
@@ -146,9 +146,12 @@ docker compose up -d
 
 说明：
 
+- `name`：服务显示名称，可留空；留空时界面会使用 `url` 展示
 - `url`：OpenList 服务地址
 - `token`：OpenList API Token
 - `baseUrl`：播放链接与源目录拼接时使用的前缀，默认 `/`
+
+- `url` 不能重复配置。
 
 ## 定时任务配置
 
@@ -158,6 +161,7 @@ docker compose up -d
 - `serviceId`
 - `sourcePath`
 - `targetPath`
+- `scheduleEnabled`
 - `cron`
 - `maxConcurrency`
 - `downloadExtensions`
@@ -171,8 +175,20 @@ docker compose up -d
 
 - `sourcePath`：相对服务 `baseUrl` 的视频源目录或单文件路径
 - `targetPath`：本地 STRM 文件存放目录；Docker 部署时请填写容器内已映射目录
-- `cron`：支持每小时、每天、每周、每月和自定义 Cron
+- `scheduleEnabled`：是否配置定时任务；关闭后仅支持手动执行
+- `cron`：开启定时任务后生效，支持每小时、每天、每周、每月和自定义 Cron
+- `overwriteExisting`：关闭时使用原子写入，目标文件已存在会跳过
 - `callbackUrl`：通知开启后必填；任务有生成文件或下载字幕时自动回调
+
+同一个 `serviceId + sourcePath + targetPath` 不能重复配置。
+
+任务执行时会边扫描边写入目标目录：扫描到视频文件会立即生成对应 `.strm`，扫描到字幕文件会立即下载到目标目录。即使任务中途失败，已经处理完成的文件也会保留。
+
+## 运行日志
+
+任务列表中的“日志”会展示最近一次运行摘要。运行记录页面中点击任务名称会进入独立日志详情页，地址会携带运行记录 ID，刷新页面后仍会恢复当前日志详情。
+
+任务运行中，日志详情页会自动刷新处理进度和详细日志。
 
 ## 备份恢复
 
@@ -194,4 +210,3 @@ docker compose up -d
 ## 文档
 
 - 技术文档：[TECHNICAL.md](./TECHNICAL.md)
-- 贡献指南：[CONTRIBUTING.md](./CONTRIBUTING.md)
