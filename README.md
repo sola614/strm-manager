@@ -67,7 +67,6 @@ http://localhost:4173
 docker run -d \
   --name strm-manager \
   -p 4173:4173 \
-  -e ADMIN_PASSWORD=admin \
   -e DATABASE_PATH=/app/data/database.sqlite \
   -e STRM_TARGET_PATH=/media/strm \
   -v strm-manager-data:/app/data \
@@ -115,17 +114,17 @@ volumes:
 - 用户名：`admin`
 - 初始密码：`admin`
 
-首次登录后必须修改密码。Docker 部署时建议通过 `ADMIN_PASSWORD` 设置初始管理员密码。
+首次登录后必须修改密码。
 
 ## 忘记密码
 
-如果忘记管理员密码，可以临时设置 `RESET_ADMIN_PASSWORD` 重置密码。
+如果忘记管理员密码，可以临时设置 `RESET_ADMIN_PASSWORD` 重置为初始密码 `admin`。
 
 Docker Compose 示例：
 
 ```yaml
 environment:
-  RESET_ADMIN_PASSWORD: admin123456
+  RESET_ADMIN_PASSWORD: true
 ```
 
 然后重启容器：
@@ -134,7 +133,7 @@ environment:
 docker compose up -d
 ```
 
-使用新密码登录后，系统会要求再次修改密码。修改完成后，请删除 `RESET_ADMIN_PASSWORD` 并再次重启容器，避免每次启动都把密码重置回该值。
+使用 `admin` 登录后，系统会要求再次修改密码。修改完成后，请删除 `RESET_ADMIN_PASSWORD` 并再次重启容器，避免每次启动都把密码重置为 `admin`。
 
 ## OpenList 服务配置
 

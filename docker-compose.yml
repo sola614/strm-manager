@@ -14,19 +14,15 @@ services:
       # Web 服务监听端口，需要和 ports 中的容器端口保持一致。
       PORT: 4173
 
-      # 初始管理员密码，仅在数据库首次初始化、尚未保存密码时生效。
-      # 首次登录后系统会要求修改密码；后续修改此值不会重置已有密码。
-      ADMIN_PASSWORD: admin
-
       # SQLite 数据库文件路径；必须位于已持久化挂载的目录中，避免容器重建后数据丢失。
       DATABASE_PATH: /app/data/database.sqlite
 
       # 新建任务时默认填入的 STRM 输出目录。该路径是容器内路径，需要在 volumes 中映射到宿主机目录。
       STRM_TARGET_PATH: /media/strm
 
-      # 忘记密码时临时启用：取消下一行注释并重启容器，会把管理员密码重置为该值。
+      # 忘记密码时临时启用：取消下一行注释并重启容器，会把管理员密码重置为 admin。
       # 登录并修改密码后，请删除或重新注释该配置，再次重启容器。
-      # RESET_ADMIN_PASSWORD: admin123456
+      # RESET_ADMIN_PASSWORD: true
 
     volumes:
       # 持久化数据库与应用数据。

@@ -15,7 +15,6 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 4173);
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
-const INITIAL_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
 const RESET_ADMIN_PASSWORD = process.env.RESET_ADMIN_PASSWORD || '';
 const DEFAULT_STRM_TARGET_PATH = process.env.STRM_TARGET_PATH || '/media/strm';
 const DATABASE_PATH = resolveDatabasePath(
@@ -343,19 +342,19 @@ function createTables() {
 
 function initializeSettings() {
   if (!getSetting('admin_password_hash')) {
-    setSetting('admin_password_hash', hashValue(INITIAL_ADMIN_PASSWORD));
+    setSetting('admin_password_hash', hashValue(DEFAULT_ADMIN_PASSWORD));
   }
 
   if (RESET_ADMIN_PASSWORD) {
-    setSetting('admin_password_hash', hashValue(RESET_ADMIN_PASSWORD));
+    setSetting('admin_password_hash', hashValue(DEFAULT_ADMIN_PASSWORD));
     setSetting('force_password_change', '1');
     setSetting('session_token_hash', '');
-    console.warn('Admin password was reset from RESET_ADMIN_PASSWORD. Remove this environment variable after login.');
+    console.warn('Admin password was reset to the default password. Remove RESET_ADMIN_PASSWORD after login.');
     return;
   }
 
   if (!getSetting('force_password_change')) {
-    setSetting('force_password_change', INITIAL_ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD ? '1' : '0');
+    setSetting('force_password_change', '1');
   }
 
   if (!getSetting('session_token_hash')) {
