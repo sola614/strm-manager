@@ -1,10 +1,12 @@
 import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Card, Select, Space, Table, Tag } from 'antd';
+import { Button, Card, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useState } from 'react';
 import { OpenlistService, SyncTask, TaskRun } from '../../../types';
 import { formatDateTime, getStoredPageSize, setStoredPageSize, statusColor } from '../utils';
 import { RunLogModal } from '../components/RunLogModal';
+
+const { Text } = Typography;
 
 interface RunsPageProps {
   runs: TaskRun[];
@@ -145,7 +147,29 @@ export function RunsPage(props: RunsPageProps) {
           </Space>
         }
       >
-        <Table rowKey="id" columns={columns} dataSource={filteredRuns} pagination={pagination} />
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={filteredRuns}
+          pagination={pagination}
+          rowClassName={(record) => (record.id === props.selectedRun?.id ? 'ant-table-row-selected' : '')}
+        />
+      </Card>
+
+      <Card className="module-card" title="详细日志" style={{ marginTop: 16 }}>
+        {props.selectedRun ? (
+          props.selectedRun.details.length > 0 ? (
+            <Space direction="vertical" size={6} style={{ width: '100%' }}>
+              {props.selectedRun.details.map((detail, index) => (
+                <Text key={`${props.selectedRun?.id}-${index}`}>- {detail}</Text>
+              ))}
+            </Space>
+          ) : (
+            <Text type="secondary">当前运行记录暂无详细日志。</Text>
+          )
+        ) : (
+          <Text type="secondary">点击运行记录中的任务名称查看详细日志。</Text>
+        )}
       </Card>
 
       <RunLogModal

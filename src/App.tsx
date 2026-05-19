@@ -125,7 +125,7 @@ function AdminApp() {
   }, []);
 
   useEffect(() => {
-    if (!user || !hasRunningRuns) return;
+    if (!user || (!hasRunningRuns && selectedRun?.status !== 'running')) return;
 
     let cancelled = false;
     const pollRuns = async () => {
@@ -145,7 +145,7 @@ function AdminApp() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [hasRunningRuns, user]);
+  }, [hasRunningRuns, selectedRun?.status, user]);
 
   useEffect(() => {
     if (selectedRun) {
@@ -396,10 +396,13 @@ function AdminApp() {
     }
   }
 
-  function viewTaskHistory(task: SyncTask) {
+  async function viewTaskHistory(task: SyncTask) {
     setLatestLogModalOpen(false);
     setRunServiceFilter(task.serviceId);
     setRunTaskFilter(task.id);
+    const nextRuns = await refreshRunsAndTasks();
+    const latestTaskRun = nextRuns.find((run) => run.taskId === task.id) || null;
+    setSelectedRun(latestTaskRun);
     changeView('runs');
   }
 

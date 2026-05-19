@@ -1,4 +1,4 @@
-import { Divider, Modal, Space, Tag, Typography } from 'antd';
+import { Modal, Space, Tag, Typography } from 'antd';
 import { ReactNode } from 'react';
 import { TaskRun } from '../../../types';
 import { formatDateTime, statusColor } from '../utils';
@@ -12,6 +12,7 @@ interface RunLogModalProps {
   loading?: boolean;
   onClose: () => void;
   footerExtra?: ReactNode;
+  showDetails?: boolean;
 }
 
 export function RunLogModal(props: RunLogModalProps) {
@@ -40,9 +41,8 @@ export function RunLogModal(props: RunLogModalProps) {
           <Text>字幕数量：{props.run.subtitleCount}</Text>
           <Text>失败数量：{props.run.failureCount}</Text>
           <Paragraph style={{ marginBottom: 0 }}>日志说明：{props.run.message}</Paragraph>
-          {props.run.details.length > 0 && (
+          {props.showDetails && props.run.details.length > 0 && (
             <>
-              <Divider style={{ margin: '8px 0' }} />
               <Space direction="vertical" size={6} style={{ width: '100%' }}>
                 {props.run.details.map((detail, index) => (
                   <Text key={`${props.run?.id}-${index}`}>- {detail}</Text>

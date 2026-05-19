@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -868,62 +867,105 @@ function recordSkippedRun(task, service, message) {
 }
 
 async function executeTaskRun(task, service, run) {
-  const localDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'alist2strm-'));
   const fullSourcePath = buildServiceSourcePath(service.baseUrl, task.sourcePath);
   const details = [];
   const downloadExtensionSet = buildExtensionSet(task.downloadExtensions);
+  const summary = {
+    processedCount: 0,
+    subtitleCount: 0,
+    skippedCount: 0,
+    failureCount: 0,
+  };
+  const progress = createRunProgress(run.id, details, summary);
 
   try {
+    await fs.promises.mkdir(path.resolve(task.targetPath), { recursive: true });
+
     if (isMediaFile(fullSourcePath, downloadExtensionSet)) {
-      await getFileInfo({ service, filePath: fullSourcePath, localDir, details, task, downloadExtensionSet });
+      await getFileInfo({ service, filePath: fullSourcePath, pathPrefix: '', progress, task, downloadExtensionSet });
     } else {
-      await handleGetList({ service, dirPath: fullSourcePath, localDir, details, task, downloadExtensionSet });
+      await handleGetList({ service, dirPath: fullSourcePath, pathPrefix: '', progress, task, downloadExtensionSet });
     }
 
-    const syncSummary = await syncGeneratedFiles(localDir, task.targetPath, task.overwriteExisting, details);
     const completedAt = now();
 
-    if (task.notifyEnabled && task.callbackUrl && (syncSummary.processedCount > 0 || syncSummary.subtitleCount > 0)) {
+    if (task.notifyEnabled && task.callbackUrl && (summary.processedCount > 0 || summary.subtitleCount > 0)) {
       await triggerCallback(task.callbackUrl, {
         taskId: task.id,
         taskName: task.name,
-        processedCount: syncSummary.processedCount,
-        subtitleCount: syncSummary.subtitleCount,
+        processedCount: summary.processedCount,
+        subtitleCount: summary.subtitleCount,
         details,
         finishedAt: completedAt,
       });
       details.push(`回调通知已发送到 ${task.callbackUrl}`);
     }
 
+    progress.flush();
     updateRunRecord(run.id, {
       completed_at: completedAt,
-      status: syncSummary.failureCount > 0 ? 'error' : 'success',
+      status: summary.failureCount > 0 ? 'error' : 'success',
       message:
-        syncSummary.failureCount > 0
-          ? `任务执行完成，但有 ${syncSummary.failureCount} 个文件处理失败。`
-          : `任务执行完成，生成 ${syncSummary.processedCount} 个 STRM 文件，字幕 ${syncSummary.subtitleCount} 个。`,
+        summary.failureCount > 0
+          ? `任务执行完成，但有 ${summary.failureCount} 个文件处理失败。`
+          : `任务执行完成，生成 ${summary.processedCount} 个 STRM 文件，字幕 ${summary.subtitleCount} 个。`,
       details: JSON.stringify(details.slice(0, 300)),
-      processed_count: syncSummary.processedCount,
-      subtitle_count: syncSummary.subtitleCount,
-      skipped_count: syncSummary.skippedCount,
-      failure_count: syncSummary.failureCount,
+      processed_count: summary.processedCount,
+      subtitle_count: summary.subtitleCount,
+      skipped_count: summary.skippedCount,
+      failure_count: summary.failureCount,
     });
 
     updateTaskLastRunAt(task.id, completedAt);
   } catch (error) {
+    progress.flush();
     updateRunRecord(run.id, {
       completed_at: now(),
       status: 'error',
       message: formatError(error),
       details: JSON.stringify(details.slice(0, 300)),
+      processed_count: summary.processedCount,
+      subtitle_count: summary.subtitleCount,
+      skipped_count: summary.skippedCount,
       failure_count: 1,
     });
-  } finally {
-    await deleteLocalFiles(localDir).catch(() => {});
   }
 }
 
-async function getFileInfo({ service, filePath, localDir, details, task, downloadExtensionSet }) {
+function createRunProgress(runId, details, summary) {
+  let timer = null;
+
+  const write = () => {
+    updateRunRecord(runId, {
+      details: JSON.stringify(details.slice(0, 300)),
+      processed_count: summary.processedCount,
+      subtitle_count: summary.subtitleCount,
+      skipped_count: summary.skippedCount,
+      failure_count: summary.failureCount,
+    });
+  };
+
+  return {
+    details,
+    summary,
+    changed() {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        write();
+      }, 300);
+    },
+    flush() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      write();
+    },
+  };
+}
+
+async function getFileInfo({ service, filePath, pathPrefix, progress, task, downloadExtensionSet }) {
   const response = await fetch(buildApiUrl(service.url, '/api/fs/get'), {
     method: 'POST',
     headers: {
@@ -947,15 +989,14 @@ async function getFileInfo({ service, filePath, localDir, details, task, downloa
     service,
     item: payload.data,
     currentPath: path.posix.dirname(filePath),
-    localDir,
-    pathPrefix: '',
-    details,
+    pathPrefix,
+    progress,
     task,
     downloadExtensionSet,
   });
 }
 
-async function handleGetList({ service, dirPath, pathPrefix = '', localDir, details, task, downloadExtensionSet }) {
+async function handleGetList({ service, dirPath, pathPrefix = '', progress, task, downloadExtensionSet }) {
   let page = 1;
   const perPage = 1000;
 
@@ -988,8 +1029,7 @@ async function handleGetList({ service, dirPath, pathPrefix = '', localDir, deta
           service,
           dirPath: joinRemotePath(dirPath, item.name),
           pathPrefix: path.posix.join(pathPrefix, item.name),
-          localDir,
-          details,
+          progress,
           task,
           downloadExtensionSet,
         });
@@ -1000,9 +1040,8 @@ async function handleGetList({ service, dirPath, pathPrefix = '', localDir, deta
         service,
         item,
         currentPath: dirPath,
-        localDir,
         pathPrefix,
-        details,
+        progress,
         task,
         downloadExtensionSet,
       });
@@ -1014,9 +1053,9 @@ async function handleGetList({ service, dirPath, pathPrefix = '', localDir, deta
   }
 }
 
-async function saveRemoteItem({ service, item, currentPath, localDir, pathPrefix, details, task, downloadExtensionSet }) {
+async function saveRemoteItem({ service, item, currentPath, pathPrefix, progress, task, downloadExtensionSet }) {
   if (!item?.name || !isSafePathPart(item.name)) return;
-  const saveDir = path.join(localDir, pathPrefix);
+  const saveDir = path.join(path.resolve(task.targetPath), pathPrefix);
   await fs.promises.mkdir(saveDir, { recursive: true });
 
   const fileName = item.name;
@@ -1037,7 +1076,9 @@ async function saveRemoteItem({ service, item, currentPath, localDir, pathPrefix
     const subtitlePath = path.join(saveDir, fileName);
 
     if (!task.overwriteExisting && fs.existsSync(subtitlePath)) {
-      details.push(`${fileName} 字幕已存在，跳过下载`);
+      progress.summary.skippedCount += 1;
+      progress.details.push(`${fileName} 字幕已存在，跳过下载`);
+      progress.changed();
       return;
     }
 
@@ -1048,7 +1089,9 @@ async function saveRemoteItem({ service, item, currentPath, localDir, pathPrefix
 
     const arrayBuffer = await response.arrayBuffer();
     await fs.promises.writeFile(subtitlePath, Buffer.from(arrayBuffer));
-    details.push(`${fileName} 字幕下载成功`);
+    progress.summary.subtitleCount += 1;
+    progress.details.push(`${fileName} 字幕下载成功`);
+    progress.changed();
     return;
   }
 
@@ -1057,12 +1100,16 @@ async function saveRemoteItem({ service, item, currentPath, localDir, pathPrefix
   const savePath = path.join(saveDir, fileName.replace(/\.[^.]+$/i, '.strm'));
 
   if (!task.overwriteExisting && fs.existsSync(savePath)) {
-    details.push(`${path.basename(savePath)} 已存在，跳过创建`);
+    progress.summary.skippedCount += 1;
+    progress.details.push(`${path.basename(savePath)} 已存在，跳过创建`);
+    progress.changed();
     return;
   }
 
   await fs.promises.writeFile(savePath, streamUrl, 'utf8');
-  details.push(`${path.basename(savePath)} 创建成功`);
+  progress.summary.processedCount += 1;
+  progress.details.push(`${path.basename(savePath)} 创建成功`);
+  progress.changed();
 }
 
 async function triggerCallback(callbackUrl, payload) {
@@ -1176,70 +1223,6 @@ function joinRemotePath(basePath, childName) {
 
 function isSafePathPart(name) {
   return Boolean(name) && name !== '.' && name !== '..' && !/[\\/]/.test(name);
-}
-
-async function syncGeneratedFiles(localDir, remoteDir, overwriteExisting = false, details = []) {
-  const files = await collectLocalFiles(localDir);
-  const summary = {
-    processedCount: 0,
-    subtitleCount: 0,
-    skippedCount: 0,
-    failureCount: 0,
-  };
-
-  await fs.promises.mkdir(path.resolve(remoteDir), { recursive: true });
-
-  for (const file of files) {
-    const relativePath = path.relative(localDir, file);
-    const targetFile = path.join(path.resolve(remoteDir), relativePath);
-    await fs.promises.mkdir(path.dirname(targetFile), { recursive: true });
-
-    if (!overwriteExisting && fs.existsSync(targetFile)) {
-      summary.skippedCount += 1;
-      details.push(`${relativePath} 已存在，跳过同步`);
-      continue;
-    }
-
-    await fs.promises.copyFile(file, targetFile);
-
-    if (targetFile.endsWith('.strm')) {
-      summary.processedCount += 1;
-    } else if (isSubtitleFile(targetFile)) {
-      summary.subtitleCount += 1;
-    }
-  }
-
-  return summary;
-}
-
-async function collectLocalFiles(rootDir) {
-  const entries = await fs.promises.readdir(rootDir, { withFileTypes: true });
-  const files = [];
-
-  for (const entry of entries) {
-    const fullPath = path.join(rootDir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...(await collectLocalFiles(fullPath)));
-    } else {
-      files.push(fullPath);
-    }
-  }
-
-  return files;
-}
-
-async function deleteLocalFiles(targetPath) {
-  const resolvedTarget = path.resolve(targetPath);
-  const resolvedTemp = path.resolve(os.tmpdir());
-
-  if (
-    !resolvedTarget.startsWith(`${resolvedTemp}${path.sep}`) ||
-    !path.basename(resolvedTarget).startsWith('alist2strm-')
-  ) {
-    throw new Error(`拒绝删除非临时目录：${targetPath}`);
-  }
-
-  await fs.promises.rm(resolvedTarget, { recursive: true, force: true });
 }
 
 async function runWithConcurrency(items, concurrency, handler) {

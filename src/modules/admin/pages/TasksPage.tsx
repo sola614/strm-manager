@@ -172,7 +172,7 @@ export function TasksPage(props: TasksPageProps) {
         footerExtra={
           props.logTask ? (
             <Button type="primary" onClick={() => props.onViewTaskHistory(props.logTask!)}>
-              查看更多历史运行
+              查看详细日志
             </Button>
           ) : undefined
         }
