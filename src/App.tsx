@@ -35,6 +35,7 @@ import { RunDetailPage } from './modules/admin/pages/RunDetailPage';
 import { RunsPage } from './modules/admin/pages/RunsPage';
 import { ServicesPage } from './modules/admin/pages/ServicesPage';
 import { TasksPage } from './modules/admin/pages/TasksPage';
+import { getServiceDisplayName } from './modules/admin/utils';
 import { ActiveView, AuthResponse, OpenlistService, SessionUser, SyncTask, TaskRun } from './types';
 
 const validViews: ActiveView[] = ['dashboard', 'services', 'tasks', 'runs', 'runDetail', 'backup'];
@@ -372,7 +373,7 @@ function AdminApp() {
     try {
       await deleteService(service.id);
       await refreshServices();
-      message.success(`服务 ${service.name} 已删除。`);
+      message.success(`服务 ${getServiceDisplayName(service)} 已删除。`);
     } catch (error) {
       message.error(formatError(error, '删除 OpenList 服务失败。'));
     }

@@ -17,7 +17,7 @@ import { InfoCircleOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import { OpenlistService, SyncTask, SyncTaskFormValues } from '../../../types';
 import { defaultTaskForm } from '../constants';
-import { formatDateTime } from '../utils';
+import { formatDateTime, getServiceDisplayName } from '../utils';
 import { getNextRun } from '../../../lib/cron';
 
 const { Text } = Typography;
@@ -250,7 +250,7 @@ export function TaskDrawer(props: TaskDrawerProps) {
         >
           <Select
             options={props.services.map((service) => ({
-              label: `${service.name} (${service.url})`,
+              label: `${getServiceDisplayName(service)} (${service.url})`,
               value: service.id,
             }))}
           />

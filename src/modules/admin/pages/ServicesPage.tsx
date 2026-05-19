@@ -3,7 +3,7 @@ import { Button, Card, Popconfirm, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useState } from 'react';
 import { OpenlistService, SyncTask } from '../../../types';
-import { formatDateTime, getStoredPageSize, setStoredPageSize } from '../utils';
+import { formatDateTime, getServiceDisplayName, getStoredPageSize, setStoredPageSize } from '../utils';
 
 const { Text } = Typography;
 
@@ -27,7 +27,7 @@ export function ServicesPage(props: ServicesPageProps) {
       key: 'name',
       render: (_value: string, record: OpenlistService) => (
         <Space direction="vertical" size={0}>
-          <Text strong>{record.name}</Text>
+          <Text strong>{getServiceDisplayName(record)}</Text>
           <Text type="secondary">#{record.id}</Text>
         </Space>
       ),

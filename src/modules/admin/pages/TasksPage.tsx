@@ -7,6 +7,7 @@ import { getNextRun } from '../../../lib/cron';
 import {
   buildDisplaySourcePath,
   formatDateTime,
+  getServiceDisplayName,
   getServiceName,
   getStoredPageSize,
   setStoredPageSize,
@@ -141,7 +142,7 @@ export function TasksPage(props: TasksPageProps) {
               options={[
                 { label: '全部服务', value: 'all' },
                 ...props.services.map((service) => ({
-                  label: service.name,
+                  label: getServiceDisplayName(service),
                   value: service.id,
                 })),
               ]}

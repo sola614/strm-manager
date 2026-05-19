@@ -3,7 +3,7 @@ import { Button, Card, Select, Space, Table, Tag } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useState } from 'react';
 import { OpenlistService, SyncTask, TaskRun } from '../../../types';
-import { formatDateTime, getStoredPageSize, setStoredPageSize, statusColor } from '../utils';
+import { formatDateTime, getServiceDisplayName, getStoredPageSize, setStoredPageSize, statusColor } from '../utils';
 import { RunLogModal } from '../components/RunLogModal';
 
 interface RunsPageProps {
@@ -123,7 +123,7 @@ export function RunsPage(props: RunsPageProps) {
               options={[
                 { label: '全部服务', value: 'all' },
                 ...props.services.map((service) => ({
-                  label: service.name,
+                  label: getServiceDisplayName(service),
                   value: service.id,
                 })),
               ]}

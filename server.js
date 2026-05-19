@@ -512,6 +512,14 @@ function removeServiceRecord(id) {
   db.prepare('DELETE FROM services WHERE id = ?').run(id);
 }
 
+function findDuplicateServiceUrl(url, excludeId = null) {
+  if (!url) return null;
+  const row = excludeId
+    ? db.prepare('SELECT id FROM services WHERE url = ? AND id != ?').get(url, excludeId)
+    : db.prepare('SELECT id FROM services WHERE url = ?').get(url);
+  return row ? String(row.id) : null;
+}
+
 function normalizeServicePayload(input, existing = null) {
   const name = sanitizeText(input?.name ?? existing?.name ?? '');
   const url = normalizeUrl(input?.url ?? existing?.url ?? '');
@@ -519,7 +527,6 @@ function normalizeServicePayload(input, existing = null) {
   const baseUrl = normalizeBaseUrl(input?.baseUrl ?? input?.base_url ?? existing?.baseUrl ?? '/');
   const errors = [];
 
-  if (!name) errors.push('服务名称不能为空。');
   if (!url) errors.push('服务 URL 不能为空。');
   if (!token) errors.push('服务 Token 不能为空。');
 
@@ -529,6 +536,10 @@ function normalizeServicePayload(input, existing = null) {
     } catch {
       errors.push('服务 URL 不合法。');
     }
+  }
+
+  if (url && findDuplicateServiceUrl(url, existing?.id || null)) {
+    errors.push('服务 URL 已存在，请勿重复配置。');
   }
 
   return {
@@ -624,6 +635,20 @@ function updateTaskLastRunAt(id, value) {
   db.prepare('UPDATE tasks SET last_run_at = ?, updated_at = ? WHERE id = ?').run(value, now(), id);
 }
 
+function findDuplicateTask(serviceId, sourcePath, targetPath, excludeId = null) {
+  if (!serviceId || !sourcePath || !targetPath) return null;
+  const row = excludeId
+    ? db.prepare(`
+      SELECT id FROM tasks
+      WHERE service_id = ? AND source_path = ? AND target_path = ? AND id != ?
+    `).get(serviceId, sourcePath, targetPath, excludeId)
+    : db.prepare(`
+      SELECT id FROM tasks
+      WHERE service_id = ? AND source_path = ? AND target_path = ?
+    `).get(serviceId, sourcePath, targetPath);
+  return row ? String(row.id) : null;
+}
+
 function normalizeTaskPayload(input, existing = null) {
   const name = sanitizeText(input?.name ?? existing?.name ?? '');
   const serviceId = sanitizeText(input?.serviceId ?? input?.service_id ?? existing?.serviceId ?? '');
@@ -665,6 +690,9 @@ function normalizeTaskPayload(input, existing = null) {
   if (!downloadExtensions) errors.push('自定义下载后缀不能为空。');
   if (cronExpr && !cron.validate(cronExpr)) errors.push('Cron 表达式无效。');
   if (notifyEnabled && !callbackUrl) errors.push('开启通知后必须填写回调地址。');
+  if (findDuplicateTask(serviceId, sourcePath, targetPath, existing?.id || null)) {
+    errors.push('相同服务、源地址和目标地址的任务已存在，请勿重复配置。');
+  }
 
   if (callbackUrl) {
     try {
@@ -823,7 +851,7 @@ async function startTaskRun(taskId, triggerType) {
     taskId: task.id,
     taskName: task.name,
     serviceId: service.id,
-    serviceName: service.name,
+    serviceName: getServiceDisplayName(service),
     triggerType,
     startedAt: now(),
     completedAt: null,
@@ -852,7 +880,7 @@ function recordSkippedRun(task, service, message) {
     taskId: task.id,
     taskName: task.name,
     serviceId: service.id,
-    serviceName: service.name,
+    serviceName: getServiceDisplayName(service),
     triggerType: 'schedule',
     startedAt: now(),
     completedAt: now(),
@@ -1169,6 +1197,10 @@ function buildServiceSourcePath(baseUrl, sourcePath) {
 
 function buildApiUrl(domain, pathname) {
   return `${domain.replace(/\/+$/, '')}${pathname}`;
+}
+
+function getServiceDisplayName(service) {
+  return service?.name || service?.url || String(service?.id || '');
 }
 
 function buildExtensionSet(value) {

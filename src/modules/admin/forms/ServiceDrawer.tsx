@@ -50,11 +50,7 @@ export function ServiceDrawer(props: ServiceDrawerProps) {
       }
     >
       <Form form={form} layout="vertical" initialValues={initialValues}>
-        <Form.Item
-          label="服务名称"
-          name="name"
-          rules={[{ required: true, message: '请输入服务名称' }]}
-        >
+        <Form.Item label="服务名称" name="name">
           <Input placeholder="主 OpenList 服务" />
         </Form.Item>
 

@@ -36,7 +36,12 @@ export function statusColor(status: TaskRun['status']) {
 }
 
 export function getServiceName(services: OpenlistService[], serviceId: string) {
-  return services.find((service) => service.id === serviceId)?.name || serviceId;
+  const service = services.find((item) => item.id === serviceId);
+  return service ? getServiceDisplayName(service) : serviceId;
+}
+
+export function getServiceDisplayName(service: OpenlistService) {
+  return service.name || service.url || `#${service.id}`;
 }
 
 export function buildDisplaySourcePath(baseUrl: string, sourcePath: string) {

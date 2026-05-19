@@ -1,7 +1,7 @@
 import { CloudServerOutlined, FileSyncOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Button, Card, Col, List, Row, Space, Statistic, Tag, Typography } from 'antd';
 import { OpenlistService, SyncTask, TaskRun, ActiveView } from '../../../types';
-import { formatDateTime, statusColor } from '../utils';
+import { formatDateTime, getServiceDisplayName, statusColor } from '../utils';
 
 const { Text } = Typography;
 
@@ -104,7 +104,7 @@ export function DashboardPage(props: DashboardPageProps) {
                   ]}
                 >
                   <List.Item.Meta
-                    title={service.name}
+                    title={getServiceDisplayName(service)}
                     description={
                       <Space direction="vertical" size={0}>
                         <Text>{service.url}</Text>
