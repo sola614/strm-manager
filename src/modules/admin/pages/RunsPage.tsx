@@ -4,7 +4,6 @@ import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useState } from 'react';
 import { OpenlistService, SyncTask, TaskRun } from '../../../types';
 import { formatDateTime, getServiceDisplayName, getStoredPageSize, setStoredPageSize, statusColor } from '../utils';
-import { RunLogModal } from '../components/RunLogModal';
 
 interface RunsPageProps {
   runs: TaskRun[];
@@ -13,12 +12,9 @@ interface RunsPageProps {
   serviceFilter: string;
   taskFilter: string;
   selectedRun: TaskRun | null;
-  logModalOpen: boolean;
   onServiceFilterChange: (value: string) => void;
   onTaskFilterChange: (value: string) => void;
   onRefresh: () => void;
-  onOpenLog: (run: TaskRun) => void;
-  onCloseLog: () => void;
   onViewRunDetail: (run: TaskRun | null) => void;
 }
 
@@ -42,7 +38,7 @@ export function RunsPage(props: RunsPageProps) {
       dataIndex: 'taskName',
       key: 'taskName',
       render: (_value: string, record: TaskRun) => (
-        <Button type="link" style={{ padding: 0 }} onClick={() => props.onOpenLog(record)}>
+        <Button type="link" style={{ padding: 0 }} onClick={() => props.onViewRunDetail(record)}>
           {record.taskName}
         </Button>
       ),
@@ -154,20 +150,6 @@ export function RunsPage(props: RunsPageProps) {
           rowClassName={(record) => (record.id === props.selectedRun?.id ? 'ant-table-row-selected' : '')}
         />
       </Card>
-
-      <RunLogModal
-        open={props.logModalOpen}
-        title={props.selectedRun ? `运行日志详情 - ${props.selectedRun.taskName}` : '运行日志详情'}
-        run={props.selectedRun}
-        onClose={props.onCloseLog}
-        footerExtra={
-          props.selectedRun ? (
-            <Button type="primary" onClick={() => props.onViewRunDetail(props.selectedRun)}>
-              查看详细日志
-            </Button>
-          ) : undefined
-        }
-      />
     </>
   );
 }

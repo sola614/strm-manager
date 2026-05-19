@@ -10,6 +10,7 @@ import {
   exportBackup,
   getAppConfig,
   getCurrentUser,
+  getRun,
   getRuns,
   getServices,
   getStoredToken,
@@ -42,8 +43,14 @@ const validViews: ActiveView[] = ['dashboard', 'services', 'tasks', 'runs', 'run
 
 function getViewFromLocation(): ActiveView {
   if (typeof window === 'undefined') return 'dashboard';
-  const raw = window.location.hash.replace(/^#\/?/, '').trim();
+  const raw = window.location.hash.replace(/^#\/?/, '').trim().split('?')[0];
   return validViews.includes(raw as ActiveView) ? (raw as ActiveView) : 'dashboard';
+}
+
+function getRunIdFromLocation() {
+  if (typeof window === 'undefined') return '';
+  const query = window.location.hash.split('?')[1] || '';
+  return new URLSearchParams(query).get('id') || '';
 }
 
 export default function App() {
@@ -91,7 +98,6 @@ function AdminApp() {
   const [submittingTask, setSubmittingTask] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [latestLogModalOpen, setLatestLogModalOpen] = useState(false);
-  const [runLogModalOpen, setRunLogModalOpen] = useState(false);
   const [logLoading, setLogLoading] = useState(false);
 
   const [editingService, setEditingService] = useState<OpenlistService | null>(null);
@@ -99,6 +105,7 @@ function AdminApp() {
   const [logTask, setLogTask] = useState<SyncTask | null>(null);
   const [latestRunLog, setLatestRunLog] = useState<TaskRun | null>(null);
   const [selectedRun, setSelectedRun] = useState<TaskRun | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState(() => getRunIdFromLocation());
 
   const filteredTasks = useMemo(() => {
     if (serviceFilter === 'all') return tasks;
@@ -120,6 +127,7 @@ function AdminApp() {
   useEffect(() => {
     const handleHashChange = () => {
       setActiveView(getViewFromLocation());
+      setSelectedRunId(getRunIdFromLocation());
     };
     window.addEventListener('hashchange', handleHashChange);
     handleHashChange();
@@ -127,15 +135,38 @@ function AdminApp() {
   }, []);
 
   useEffect(() => {
+    if (!user || activeView !== 'runDetail' || !selectedRunId) return;
+    if (selectedRun?.id === selectedRunId) return;
+
+    getRun(selectedRunId)
+      .then((run) => {
+        setSelectedRun(run);
+        setRunServiceFilter(run.serviceId);
+        setRunTaskFilter(run.taskId);
+      })
+      .catch((error) => {
+        setSelectedRun(null);
+        message.error(formatError(error, '加载详细日志失败。'));
+      });
+  }, [activeView, message, selectedRun?.id, selectedRunId, user]);
+
+  useEffect(() => {
     if (!user || (!hasRunningRuns && selectedRun?.status !== 'running')) return;
 
     let cancelled = false;
     const pollRuns = async () => {
       try {
-        const [nextRuns, nextTasks] = await Promise.all([getRuns(), getTasks()]);
+        const [nextRuns, nextTasks, nextSelectedRun] = await Promise.all([
+          getRuns(),
+          getTasks(),
+          activeView === 'runDetail' && selectedRunId ? getRun(selectedRunId) : Promise.resolve(null),
+        ]);
         if (!cancelled) {
           setRuns(nextRuns);
           setTasks(nextTasks);
+          if (nextSelectedRun) {
+            setSelectedRun(nextSelectedRun);
+          }
         }
       } catch (error) {
         console.error('Failed to refresh running task state:', error);
@@ -147,7 +178,7 @@ function AdminApp() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [hasRunningRuns, selectedRun?.status, user]);
+  }, [activeView, hasRunningRuns, selectedRun?.status, selectedRunId, user]);
 
   useEffect(() => {
     if (selectedRun) {
@@ -196,12 +227,17 @@ function AdminApp() {
   function openRunDetail(run: TaskRun | null) {
     if (run) {
       setSelectedRun(run);
+      setSelectedRunId(run.id);
       setRunServiceFilter(run.serviceId);
       setRunTaskFilter(run.taskId);
     }
-    setRunLogModalOpen(false);
     setLatestLogModalOpen(false);
-    changeView('runDetail');
+    const nextHash = run ? `#/runDetail?id=${encodeURIComponent(run.id)}` : '#/runDetail';
+    if (window.location.hash !== nextHash) {
+      window.location.hash = nextHash;
+    } else {
+      setActiveView('runDetail');
+    }
   }
 
   async function refreshConfig() {
@@ -531,18 +567,12 @@ function AdminApp() {
         serviceFilter={runServiceFilter}
         taskFilter={runTaskFilter}
         selectedRun={selectedRun}
-        logModalOpen={runLogModalOpen}
         onServiceFilterChange={(value) => {
           setRunServiceFilter(value);
           setRunTaskFilter('all');
         }}
         onTaskFilterChange={setRunTaskFilter}
         onRefresh={refreshRunsAndTasks}
-        onOpenLog={(run) => {
-          setSelectedRun(run);
-          setRunLogModalOpen(true);
-        }}
-        onCloseLog={() => setRunLogModalOpen(false)}
         onViewRunDetail={openRunDetail}
       />
     );

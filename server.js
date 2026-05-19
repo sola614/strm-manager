@@ -244,6 +244,18 @@ app.get('/api/runs', requireAuth(), (_req, res) => {
   res.json(loadRuns());
 });
 
+app.get('/api/runs/:id', requireAuth(), (req, res) => {
+  const run = getRunById(req.params.id);
+  if (!run) {
+    return res.status(404).json({
+      code: 'RUN_NOT_FOUND',
+      error: '运行记录不存在。',
+    });
+  }
+
+  res.json(run);
+});
+
 app.get('/api/backup/export', requireAuth(), (_req, res) => {
   res.json(buildBackupPayload());
 });
@@ -787,6 +799,11 @@ function loadRunsByTask(taskId) {
   return db.prepare('SELECT * FROM runs WHERE task_id = ? ORDER BY started_at DESC LIMIT 20').all(taskId).map(mapRunRow);
 }
 
+function getRunById(id) {
+  const row = db.prepare('SELECT * FROM runs WHERE id = ?').get(id);
+  return row ? mapRunRow(row) : null;
+}
+
 function pruneRuns() {
   db.prepare(`
     DELETE FROM runs
@@ -1103,20 +1120,25 @@ async function saveRemoteItem({ service, item, currentPath, pathPrefix, progress
   if (isSubtitleFile(fileName) && task.downloadSubtitles) {
     const subtitlePath = path.join(saveDir, fileName);
 
-    if (!task.overwriteExisting && fs.existsSync(subtitlePath)) {
-      progress.summary.skippedCount += 1;
-      progress.details.push(`${fileName} 字幕已存在，跳过下载`);
-      progress.changed();
-      return;
-    }
-
     const response = await fetch(streamUrl);
     if (!response.ok) {
       throw new Error(`字幕下载失败：${response.status}`);
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    await fs.promises.writeFile(subtitlePath, Buffer.from(arrayBuffer));
+    const written = await writeOutputFile(
+      subtitlePath,
+      Buffer.from(arrayBuffer),
+      task.overwriteExisting,
+    );
+
+    if (!written) {
+      progress.summary.skippedCount += 1;
+      progress.details.push(`${fileName} 字幕已存在，跳过下载`);
+      progress.changed();
+      return;
+    }
+
     progress.summary.subtitleCount += 1;
     progress.details.push(`${fileName} 字幕下载成功`);
     progress.changed();
@@ -1126,18 +1148,32 @@ async function saveRemoteItem({ service, item, currentPath, pathPrefix, progress
   if (!isMediaFile(fileName, downloadExtensionSet)) return;
 
   const savePath = path.join(saveDir, fileName.replace(/\.[^.]+$/i, '.strm'));
-
-  if (!task.overwriteExisting && fs.existsSync(savePath)) {
+  const written = await writeOutputFile(savePath, streamUrl, task.overwriteExisting, 'utf8');
+  if (!written) {
     progress.summary.skippedCount += 1;
     progress.details.push(`${path.basename(savePath)} 已存在，跳过创建`);
     progress.changed();
     return;
   }
 
-  await fs.promises.writeFile(savePath, streamUrl, 'utf8');
   progress.summary.processedCount += 1;
   progress.details.push(`${path.basename(savePath)} 创建成功`);
   progress.changed();
+}
+
+async function writeOutputFile(filePath, content, overwriteExisting, encoding = undefined) {
+  try {
+    await fs.promises.writeFile(filePath, content, {
+      encoding,
+      flag: overwriteExisting ? 'w' : 'wx',
+    });
+    return true;
+  } catch (error) {
+    if (!overwriteExisting && error?.code === 'EEXIST') {
+      return false;
+    }
+    throw error;
+  }
 }
 
 async function triggerCallback(callbackUrl, payload) {

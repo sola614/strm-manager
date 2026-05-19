@@ -175,6 +175,10 @@ export function getRuns() {
   return requestJson<TaskRun[]>('/api/runs');
 }
 
+export function getRun(id: string) {
+  return requestJson<TaskRun>(`/api/runs/${encodeURIComponent(id)}`);
+}
+
 export function getTaskRuns(taskId: string) {
   return requestJson<TaskRun[]>(`/api/tasks/${encodeURIComponent(taskId)}/runs`);
 }
