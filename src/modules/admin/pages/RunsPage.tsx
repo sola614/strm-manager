@@ -1,12 +1,10 @@
 import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Card, Select, Space, Table, Tag, Typography } from 'antd';
+import { Button, Card, Select, Space, Table, Tag } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useState } from 'react';
 import { OpenlistService, SyncTask, TaskRun } from '../../../types';
 import { formatDateTime, getStoredPageSize, setStoredPageSize, statusColor } from '../utils';
 import { RunLogModal } from '../components/RunLogModal';
-
-const { Text } = Typography;
 
 interface RunsPageProps {
   runs: TaskRun[];
@@ -21,6 +19,7 @@ interface RunsPageProps {
   onRefresh: () => void;
   onOpenLog: (run: TaskRun) => void;
   onCloseLog: () => void;
+  onViewRunDetail: (run: TaskRun | null) => void;
 }
 
 export function RunsPage(props: RunsPageProps) {
@@ -156,27 +155,18 @@ export function RunsPage(props: RunsPageProps) {
         />
       </Card>
 
-      <Card className="module-card" title="详细日志" style={{ marginTop: 16 }}>
-        {props.selectedRun ? (
-          props.selectedRun.details.length > 0 ? (
-            <Space direction="vertical" size={6} style={{ width: '100%' }}>
-              {props.selectedRun.details.map((detail, index) => (
-                <Text key={`${props.selectedRun?.id}-${index}`}>- {detail}</Text>
-              ))}
-            </Space>
-          ) : (
-            <Text type="secondary">当前运行记录暂无详细日志。</Text>
-          )
-        ) : (
-          <Text type="secondary">点击运行记录中的任务名称查看详细日志。</Text>
-        )}
-      </Card>
-
       <RunLogModal
         open={props.logModalOpen}
         title={props.selectedRun ? `运行日志详情 - ${props.selectedRun.taskName}` : '运行日志详情'}
         run={props.selectedRun}
         onClose={props.onCloseLog}
+        footerExtra={
+          props.selectedRun ? (
+            <Button type="primary" onClick={() => props.onViewRunDetail(props.selectedRun)}>
+              查看详细日志
+            </Button>
+          ) : undefined
+        }
       />
     </>
   );

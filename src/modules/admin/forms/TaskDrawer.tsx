@@ -174,6 +174,7 @@ export function TaskDrawer(props: TaskDrawerProps) {
         serviceId: props.task.serviceId,
         sourcePath: props.task.sourcePath,
         targetPath: props.task.targetPath,
+        scheduleEnabled: Boolean(props.task.cron),
         cron: props.task.cron,
         maxConcurrency: props.task.maxConcurrency,
         downloadExtensions: props.task.downloadExtensions,
@@ -222,7 +223,7 @@ export function TaskDrawer(props: TaskDrawerProps) {
               const values = await form.validateFields();
               const finalValues: SyncTaskFormValues = {
                 ...values,
-                cron: effectiveCron,
+                cron: values.scheduleEnabled ? effectiveCron : '',
                 callbackUrl: values.notifyEnabled ? values.callbackUrl || '' : '',
               };
               await props.onSubmit(finalValues);
@@ -380,100 +381,124 @@ export function TaskDrawer(props: TaskDrawerProps) {
           }
         </Form.Item>
 
-        <Form.Item label="执行频率">
-          <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Radio.Group
-              value={cronMode}
-              onChange={(event) => setCronMode(event.target.value as CronMode)}
-              options={[
-                { label: '每小时', value: 'hourly' },
-                { label: '每天', value: 'daily' },
-                { label: '每周', value: 'weekly' },
-                { label: '每月', value: 'monthly' },
-                { label: '自定义', value: 'custom' },
-              ]}
-            />
-
-            {cronMode === 'hourly' && (
-              <Space align="center" wrap>
-                <Text>每小时的</Text>
-                <TimeSelectors preset={preset} onChange={setPreset} includeHour={false} />
-                <Text>执行</Text>
-              </Space>
-            )}
-
-            {cronMode === 'daily' && (
-              <Space align="center" wrap>
-                <Text>每天</Text>
-                <TimeSelectors preset={preset} onChange={setPreset} />
-                <Text>执行</Text>
-              </Space>
-            )}
-
-            {cronMode === 'weekly' && (
-              <Space align="center" wrap>
-                <Text>每周</Text>
-                <Select
-                  style={{ width: 120 }}
-                  value={preset.weekday}
-                  onChange={(value) => setPreset((prev) => ({ ...prev, weekday: value }))}
-                  options={weekdayOptions}
-                />
-                <TimeSelectors preset={preset} onChange={setPreset} />
-                <Text>执行</Text>
-              </Space>
-            )}
-
-            {cronMode === 'monthly' && (
-              <Space align="center" wrap>
-                <Text>每月</Text>
-                <InputNumber
-                  min={1}
-                  max={31}
-                  value={preset.dayOfMonth}
-                  onChange={(value) =>
-                    setPreset((prev) => ({ ...prev, dayOfMonth: Number(value ?? 1) }))
-                  }
-                />
-                <Text>日</Text>
-                <TimeSelectors preset={preset} onChange={setPreset} />
-                <Text>执行</Text>
-              </Space>
-            )}
-
-            {cronMode === 'custom' && (
-              <Form.Item
-                label={
-                  <Space size={6}>
-                    <span>Cron 表达式</span>
-                    <Tooltip title="格式为：秒 分 时 日 月 周，例如 0 30 8 * * 1 表示每周一 08:30:00 执行。">
-                      <InfoCircleOutlined />
-                    </Tooltip>
-                  </Space>
-                }
-                style={{ marginBottom: 0 }}
-              >
-                <Input
-                  placeholder="0 30 8 * * 1"
-                  value={customCron}
-                  onChange={(event) => setCustomCron(event.target.value)}
-                />
-              </Form.Item>
-            )}
-          </Space>
+        <Form.Item label="是否配置定时任务" name="scheduleEnabled">
+          <Radio.Group
+            options={[
+              { label: '是', value: true },
+              { label: '否', value: false },
+            ]}
+          />
         </Form.Item>
 
-        <Alert
-          type={nextRun ? 'success' : 'warning'}
-          showIcon
-          message={nextRun ? '执行时间预览' : 'Cron 表达式无效'}
-          description={
-            <Space direction="vertical" size={2}>
-              <Text>{naturalDescription}</Text>
-              <Text>下次执行：{nextRun ? formatDateTime(nextRun) : '无法解析'}</Text>
-            </Space>
+        <Form.Item shouldUpdate={(prev, next) => prev.scheduleEnabled !== next.scheduleEnabled} noStyle>
+          {({ getFieldValue }) =>
+            getFieldValue('scheduleEnabled') ? (
+              <>
+                <Form.Item label="执行频率">
+                  <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                    <Radio.Group
+                      value={cronMode}
+                      onChange={(event) => setCronMode(event.target.value as CronMode)}
+                      options={[
+                        { label: '每小时', value: 'hourly' },
+                        { label: '每天', value: 'daily' },
+                        { label: '每周', value: 'weekly' },
+                        { label: '每月', value: 'monthly' },
+                        { label: '自定义', value: 'custom' },
+                      ]}
+                    />
+
+                    {cronMode === 'hourly' && (
+                      <Space align="center" wrap>
+                        <Text>每小时的</Text>
+                        <TimeSelectors preset={preset} onChange={setPreset} includeHour={false} />
+                        <Text>执行</Text>
+                      </Space>
+                    )}
+
+                    {cronMode === 'daily' && (
+                      <Space align="center" wrap>
+                        <Text>每天</Text>
+                        <TimeSelectors preset={preset} onChange={setPreset} />
+                        <Text>执行</Text>
+                      </Space>
+                    )}
+
+                    {cronMode === 'weekly' && (
+                      <Space align="center" wrap>
+                        <Text>每周</Text>
+                        <Select
+                          style={{ width: 120 }}
+                          value={preset.weekday}
+                          onChange={(value) => setPreset((prev) => ({ ...prev, weekday: value }))}
+                          options={weekdayOptions}
+                        />
+                        <TimeSelectors preset={preset} onChange={setPreset} />
+                        <Text>执行</Text>
+                      </Space>
+                    )}
+
+                    {cronMode === 'monthly' && (
+                      <Space align="center" wrap>
+                        <Text>每月</Text>
+                        <InputNumber
+                          min={1}
+                          max={31}
+                          value={preset.dayOfMonth}
+                          onChange={(value) =>
+                            setPreset((prev) => ({ ...prev, dayOfMonth: Number(value ?? 1) }))
+                          }
+                        />
+                        <Text>日</Text>
+                        <TimeSelectors preset={preset} onChange={setPreset} />
+                        <Text>执行</Text>
+                      </Space>
+                    )}
+
+                    {cronMode === 'custom' && (
+                      <Form.Item
+                        label={
+                          <Space size={6}>
+                            <span>Cron 表达式</span>
+                            <Tooltip title="格式为：秒 分 时 日 月 周，例如 0 30 8 * * 1 表示每周一 08:30:00 执行。">
+                              <InfoCircleOutlined />
+                            </Tooltip>
+                          </Space>
+                        }
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Input
+                          placeholder="0 30 8 * * 1"
+                          value={customCron}
+                          onChange={(event) => setCustomCron(event.target.value)}
+                        />
+                      </Form.Item>
+                    )}
+                  </Space>
+                </Form.Item>
+
+                <Alert
+                  type={nextRun ? 'success' : 'warning'}
+                  showIcon
+                  message={nextRun ? '执行时间预览' : 'Cron 表达式无效'}
+                  description={
+                    <Space direction="vertical" size={2}>
+                      <Text>{naturalDescription}</Text>
+                      <Text>下次执行：{nextRun ? formatDateTime(nextRun) : '无法解析'}</Text>
+                    </Space>
+                  }
+                />
+              </>
+            ) : (
+              <Alert
+                type="info"
+                showIcon
+                message="仅手动执行"
+                description="该任务不会自动定时运行，可在任务列表中点击“立即执行”手动触发。"
+              />
+            )
           }
-        />
+        </Form.Item>
       </Form>
     </Drawer>
   );

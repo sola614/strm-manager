@@ -31,12 +31,13 @@ import { AdminShell } from './modules/admin/layout/AdminShell';
 import { DashboardPage } from './modules/admin/pages/DashboardPage';
 import { BackupPage } from './modules/admin/pages/BackupPage';
 import { LoginPage } from './modules/admin/pages/LoginPage';
+import { RunDetailPage } from './modules/admin/pages/RunDetailPage';
 import { RunsPage } from './modules/admin/pages/RunsPage';
 import { ServicesPage } from './modules/admin/pages/ServicesPage';
 import { TasksPage } from './modules/admin/pages/TasksPage';
 import { ActiveView, AuthResponse, OpenlistService, SessionUser, SyncTask, TaskRun } from './types';
 
-const validViews: ActiveView[] = ['dashboard', 'services', 'tasks', 'runs', 'backup'];
+const validViews: ActiveView[] = ['dashboard', 'services', 'tasks', 'runs', 'runDetail', 'backup'];
 
 function getViewFromLocation(): ActiveView {
   if (typeof window === 'undefined') return 'dashboard';
@@ -191,6 +192,17 @@ function AdminApp() {
     }
   }
 
+  function openRunDetail(run: TaskRun | null) {
+    if (run) {
+      setSelectedRun(run);
+      setRunServiceFilter(run.serviceId);
+      setRunTaskFilter(run.taskId);
+    }
+    setRunLogModalOpen(false);
+    setLatestLogModalOpen(false);
+    changeView('runDetail');
+  }
+
   async function refreshConfig() {
     const config = await getAppConfig();
     setDefaultStrmTargetPath(config.defaultStrmTargetPath || '/media/strm');
@@ -275,6 +287,7 @@ function AdminApp() {
       const result = await changePassword(newPassword);
       handleAuthSuccess(result);
       setPasswordOpen(false);
+      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
       message.success('密码修改成功。');
     } catch (error) {
       message.error(formatError(error, '密码修改失败。'));
@@ -396,16 +409,6 @@ function AdminApp() {
     }
   }
 
-  async function viewTaskHistory(task: SyncTask) {
-    setLatestLogModalOpen(false);
-    setRunServiceFilter(task.serviceId);
-    setRunTaskFilter(task.id);
-    const nextRuns = await refreshRunsAndTasks();
-    const latestTaskRun = nextRuns.find((run) => run.taskId === task.id) || null;
-    setSelectedRun(latestTaskRun);
-    changeView('runs');
-  }
-
   async function submitTask(values: typeof defaultTaskForm) {
     setSubmittingTask(true);
     try {
@@ -514,7 +517,7 @@ function AdminApp() {
         onTriggerTask={triggerTask}
         onOpenLog={openTaskLog}
         onCloseLog={() => setLatestLogModalOpen(false)}
-        onViewTaskHistory={viewTaskHistory}
+        onViewRunDetail={openRunDetail}
         onRefresh={refreshTasks}
       />
     );
@@ -539,6 +542,15 @@ function AdminApp() {
           setRunLogModalOpen(true);
         }}
         onCloseLog={() => setRunLogModalOpen(false)}
+        onViewRunDetail={openRunDetail}
+      />
+    );
+  } else if (activeView === 'runDetail') {
+    pageContent = (
+      <RunDetailPage
+        run={selectedRun}
+        onBack={() => changeView('runs')}
+        onRefresh={refreshRunsAndTasks}
       />
     );
   } else {

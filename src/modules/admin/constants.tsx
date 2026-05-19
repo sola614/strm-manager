@@ -22,6 +22,7 @@ export const defaultTaskForm: SyncTaskFormValues = {
   serviceId: '',
   sourcePath: '',
   targetPath: '',
+  scheduleEnabled: true,
   cron: '0 0 * * * *',
   maxConcurrency: 5,
   downloadExtensions: 'mp4,mkv',
@@ -63,6 +64,12 @@ export const viewMeta: Record<
     title: '运行记录',
     description: '查看最近任务执行结果与失败信息。',
     menuLabel: '运行记录',
+    icon: <ReloadOutlined />,
+  },
+  runDetail: {
+    title: '详细日志',
+    description: '查看单次任务运行的完整处理日志。',
+    menuLabel: '详细日志',
     icon: <ReloadOutlined />,
   },
   backup: {

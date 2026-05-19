@@ -142,18 +142,20 @@ export function getTasks(serviceId?: string) {
 }
 
 export function createTask(values: SyncTaskFormValues) {
+  const { scheduleEnabled: _scheduleEnabled, ...payload } = values;
   return requestJson<SyncTask>('/api/tasks', {
     method: 'POST',
     headers: buildHeaders(undefined, true),
-    body: JSON.stringify(values),
+    body: JSON.stringify(payload),
   });
 }
 
 export function updateTask(id: string, values: SyncTaskFormValues) {
+  const { scheduleEnabled: _scheduleEnabled, ...payload } = values;
   return requestJson<SyncTask>(`/api/tasks/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: buildHeaders(undefined, true),
-    body: JSON.stringify(values),
+    body: JSON.stringify(payload),
   });
 }
 

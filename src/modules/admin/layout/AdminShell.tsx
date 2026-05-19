@@ -56,7 +56,7 @@ export function AdminShell(props: AdminShellProps) {
         <div className="nav-group">
           {(['dashboard', 'services', 'tasks', 'runs', 'backup'] as ActiveView[]).map((viewKey) => {
             const meta = viewMeta[viewKey];
-            const active = activeView === viewKey;
+            const active = activeView === viewKey || (activeView === 'runDetail' && viewKey === 'runs');
             return (
               <button
                 key={viewKey}

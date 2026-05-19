@@ -39,6 +39,7 @@ export interface SyncTaskFormValues {
   serviceId: string;
   sourcePath: string;
   targetPath: string;
+  scheduleEnabled: boolean;
   cron: string;
   maxConcurrency: number;
   downloadExtensions: string;
@@ -85,7 +86,7 @@ export interface AppConfig {
   defaultStrmTargetPath: string;
 }
 
-export type ActiveView = 'dashboard' | 'services' | 'tasks' | 'runs' | 'backup';
+export type ActiveView = 'dashboard' | 'services' | 'tasks' | 'runs' | 'runDetail' | 'backup';
 
 export interface BackupPayload {
   version: string;

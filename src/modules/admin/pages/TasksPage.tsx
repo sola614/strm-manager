@@ -31,7 +31,7 @@ interface TasksPageProps {
   onTriggerTask: (task: SyncTask) => void;
   onOpenLog: (task: SyncTask) => void;
   onCloseLog: () => void;
-  onViewTaskHistory: (task: SyncTask) => void;
+  onViewRunDetail: (run: TaskRun | null) => void;
   onRefresh: () => void;
 }
 
@@ -170,8 +170,8 @@ export function TasksPage(props: TasksPageProps) {
         loading={props.logLoading}
         onClose={props.onCloseLog}
         footerExtra={
-          props.logTask ? (
-            <Button type="primary" onClick={() => props.onViewTaskHistory(props.logTask!)}>
+          props.latestRunLog ? (
+            <Button type="primary" onClick={() => props.onViewRunDetail(props.latestRunLog)}>
               查看详细日志
             </Button>
           ) : undefined
