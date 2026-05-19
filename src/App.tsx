@@ -8,6 +8,7 @@ import {
   deleteService,
   deleteTask,
   exportBackup,
+  getAppConfig,
   getCurrentUser,
   getRuns,
   getServices,
@@ -76,6 +77,7 @@ function AdminApp() {
   const [runServiceFilter, setRunServiceFilter] = useState<string>('all');
   const [runTaskFilter, setRunTaskFilter] = useState<string>('all');
   const [loginPassword, setLoginPassword] = useState('');
+  const [defaultStrmTargetPath, setDefaultStrmTargetPath] = useState('/media/strm');
 
   const [loginLoading, setLoginLoading] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
@@ -181,12 +183,18 @@ function AdminApp() {
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
-      await Promise.all([refreshServices(), refreshTasks(), refreshRuns()]);
+      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
     } catch (error) {
       setStoredToken(null);
       setUser(null);
       message.error(formatError(error, '登录状态已失效，请重新登录。'));
     }
+  }
+
+  async function refreshConfig() {
+    const config = await getAppConfig();
+    setDefaultStrmTargetPath(config.defaultStrmTargetPath || '/media/strm');
+    return config;
   }
 
   async function refreshServices() {
@@ -233,7 +241,7 @@ function AdminApp() {
       const result = await login(loginPassword.trim());
       handleAuthSuccess(result);
       setLoginPassword('');
-      await Promise.all([refreshServices(), refreshTasks(), refreshRuns()]);
+      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
       message.success(result.mustChangePassword ? '请先修改默认密码。' : '登录成功。');
     } catch (error) {
       message.error(formatError(error, '登录失败。'));
@@ -573,6 +581,7 @@ function AdminApp() {
         open={taskDrawerOpen}
         task={editingTask}
         services={services}
+        defaultTargetPath={defaultStrmTargetPath}
         submitting={submittingTask}
         onClose={() => {
           setTaskDrawerOpen(false);

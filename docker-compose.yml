@@ -1,18 +1,51 @@
 services:
   strm-manager:
-    build: .
-    image: strm-manager:latest
+    # 已发布镜像；更新版本时执行 docker compose pull && docker compose up -d
+    image: ghcr.io/sola614/strm-manager:latest
+
+    # 左侧为宿主机端口，右侧为容器内服务端口；如果修改 PORT，也要同步修改右侧端口。
     ports:
       - '4173:4173'
+
     environment:
+      # 运行环境，生产部署保持 production 即可。
+      NODE_ENV: production
+
+      # Web 服务监听端口，需要和 ports 中的容器端口保持一致。
       PORT: 4173
+
+      # 初始管理员密码，仅在数据库首次初始化、尚未保存密码时生效。
+      # 首次登录后系统会要求修改密码；后续修改此值不会重置已有密码。
       ADMIN_PASSWORD: admin
+
+      # SQLite 数据库文件路径；必须位于已持久化挂载的目录中，避免容器重建后数据丢失。
       DATABASE_PATH: /app/data/database.sqlite
+
+      # 新建任务时默认填入的 STRM 输出目录。该路径是容器内路径，需要在 volumes 中映射到宿主机目录。
+      STRM_TARGET_PATH: /media/strm
+
+      # 忘记密码时临时启用：取消下一行注释并重启容器，会把管理员密码重置为该值。
+      # 登录并修改密码后，请删除或重新注释该配置，再次重启容器。
+      # RESET_ADMIN_PASSWORD: admin123456
+
     volumes:
-      - strm-manager-data:/app/data
-      # Add your STRM output directory here, then use the container path in task targetPath.
-      # - D:/media/strm:/media/strm
+      # 持久化数据库与应用数据。
+      - ./data:/app/data
+
+      # STRM 文件输出目录映射。左侧改为你的宿主机目录，右侧需与 STRM_TARGET_PATH 保持一致。
+      # - /your/host/strm:/media/strm
+
+    # 容器异常退出或宿主机重启后自动恢复；手动 stop 的容器不会自动拉起。
     restart: unless-stopped
 
-volumes:
-  strm-manager-data:
+    # 资源限制，按机器性能调整。
+    cpus: '1'
+    mem_limit: 128m
+    mem_reservation: 32m
+
+    # 限制容器日志大小，避免长期运行占满磁盘。
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

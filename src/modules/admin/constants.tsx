@@ -21,7 +21,7 @@ export const defaultTaskForm: SyncTaskFormValues = {
   name: '',
   serviceId: '',
   sourcePath: '',
-  targetPath: 'D:\\media\\strm',
+  targetPath: '',
   cron: '0 0 * * * *',
   maxConcurrency: 5,
   downloadExtensions: 'mp4,mkv',

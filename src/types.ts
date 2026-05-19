@@ -81,6 +81,10 @@ export interface SessionUser {
   mustChangePassword: boolean;
 }
 
+export interface AppConfig {
+  defaultStrmTargetPath: string;
+}
+
 export type ActiveView = 'dashboard' | 'services' | 'tasks' | 'runs' | 'backup';
 
 export interface BackupPayload {

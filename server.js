@@ -16,6 +16,8 @@ const PORT = Number(process.env.PORT || 4173);
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 const INITIAL_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
+const RESET_ADMIN_PASSWORD = process.env.RESET_ADMIN_PASSWORD || '';
+const DEFAULT_STRM_TARGET_PATH = process.env.STRM_TARGET_PATH || '/media/strm';
 const DATABASE_PATH = resolveDatabasePath(
   process.env.DATABASE_PATH || path.join('data', 'database.sqlite'),
 );
@@ -72,6 +74,12 @@ app.get('/api/auth/me', requireAuth({ allowWhenPasswordChangeRequired: true }), 
   res.json({
     username: DEFAULT_ADMIN_USERNAME,
     mustChangePassword: shouldForcePasswordChange(),
+  });
+});
+
+app.get('/api/config', requireAuth({ allowWhenPasswordChangeRequired: true }), (_req, res) => {
+  res.json({
+    defaultStrmTargetPath: DEFAULT_STRM_TARGET_PATH,
   });
 });
 
@@ -336,6 +344,14 @@ function createTables() {
 function initializeSettings() {
   if (!getSetting('admin_password_hash')) {
     setSetting('admin_password_hash', hashValue(INITIAL_ADMIN_PASSWORD));
+  }
+
+  if (RESET_ADMIN_PASSWORD) {
+    setSetting('admin_password_hash', hashValue(RESET_ADMIN_PASSWORD));
+    setSetting('force_password_change', '1');
+    setSetting('session_token_hash', '');
+    console.warn('Admin password was reset from RESET_ADMIN_PASSWORD. Remove this environment variable after login.');
+    return;
   }
 
   if (!getSetting('force_password_change')) {
@@ -865,7 +881,7 @@ async function executeTaskRun(task, service, run) {
       await handleGetList({ service, dirPath: fullSourcePath, localDir, details, task, downloadExtensionSet });
     }
 
-    const syncSummary = await syncGeneratedFiles(localDir, task.targetPath);
+    const syncSummary = await syncGeneratedFiles(localDir, task.targetPath, task.overwriteExisting, details);
     const completedAt = now();
 
     if (task.notifyEnabled && task.callbackUrl && (syncSummary.processedCount > 0 || syncSummary.subtitleCount > 0)) {
@@ -1118,6 +1134,11 @@ function buildExtensionSet(value) {
   );
 }
 
+function hasExtension(fileName, extensionSet) {
+  const extension = path.extname(fileName || '').replace('.', '').toLowerCase();
+  return extensionSet.has(extension);
+}
+
 async function readJsonResponse(response) {
   const text = await response.text();
   let payload = null;
@@ -1136,12 +1157,11 @@ async function readJsonResponse(response) {
 }
 
 function isMediaFile(fileName, extensionSet = buildExtensionSet(DEFAULT_DOWNLOAD_EXTENSIONS)) {
-  const extension = path.extname(fileName || '').replace('.', '').toLowerCase();
-  return extensionSet.has(extension);
+  return hasExtension(fileName, extensionSet);
 }
 
 function isSubtitleFile(fileName) {
-  return SUBTITLE_FILE_REG.test(fileName);
+  return hasExtension(fileName, buildExtensionSet(DEFAULT_SUBTITLE_EXTENSIONS));
 }
 
 function normalizeRemotePath(value) {
@@ -1159,7 +1179,7 @@ function isSafePathPart(name) {
   return Boolean(name) && name !== '.' && name !== '..' && !/[\\/]/.test(name);
 }
 
-async function syncGeneratedFiles(localDir, remoteDir) {
+async function syncGeneratedFiles(localDir, remoteDir, overwriteExisting = false, details = []) {
   const files = await collectLocalFiles(localDir);
   const summary = {
     processedCount: 0,
@@ -1174,6 +1194,13 @@ async function syncGeneratedFiles(localDir, remoteDir) {
     const relativePath = path.relative(localDir, file);
     const targetFile = path.join(path.resolve(remoteDir), relativePath);
     await fs.promises.mkdir(path.dirname(targetFile), { recursive: true });
+
+    if (!overwriteExisting && fs.existsSync(targetFile)) {
+      summary.skippedCount += 1;
+      details.push(`${relativePath} 已存在，跳过同步`);
+      continue;
+    }
+
     await fs.promises.copyFile(file, targetFile);
 
     if (targetFile.endsWith('.strm')) {

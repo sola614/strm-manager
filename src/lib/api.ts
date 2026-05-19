@@ -1,5 +1,6 @@
 import {
   AuthResponse,
+  AppConfig,
   BackupPayload,
   OpenlistService,
   OpenlistServiceFormValues,
@@ -86,6 +87,10 @@ export function login(password: string) {
 
 export function getCurrentUser() {
   return requestJson<SessionUser>('/api/auth/me');
+}
+
+export function getAppConfig() {
+  return requestJson<AppConfig>('/api/config');
 }
 
 export function logout() {

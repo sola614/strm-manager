@@ -28,6 +28,7 @@ interface TaskDrawerProps {
   open: boolean;
   task: SyncTask | null;
   services: OpenlistService[];
+  defaultTargetPath: string;
   submitting: boolean;
   onClose: () => void;
   onSubmit: (values: SyncTaskFormValues) => Promise<void>;
@@ -185,6 +186,7 @@ export function TaskDrawer(props: TaskDrawerProps) {
     : {
         ...defaultTaskForm,
         serviceId: props.services[0]?.id || '',
+        targetPath: props.defaultTargetPath,
       };
 
   const effectiveCron = useMemo(
@@ -288,7 +290,7 @@ export function TaskDrawer(props: TaskDrawerProps) {
               tooltip="如果使用 Docker 部署，请确保这个目录已经正确映射到容器内。"
               rules={[{ required: true, message: '请输入 strm 文件存放目录' }]}
             >
-              <Input placeholder="D:\media\strm" />
+              <Input placeholder={props.defaultTargetPath} />
             </Form.Item>
           </Col>
         </Row>

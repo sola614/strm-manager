@@ -61,13 +61,7 @@ http://localhost:4173
 
 ## Docker
 
-构建镜像：
-
-```bash
-docker build -t strm-manager .
-```
-
-运行容器：
+使用已发布镜像运行：
 
 ```bash
 docker run -d \
@@ -75,25 +69,42 @@ docker run -d \
   -p 4173:4173 \
   -e ADMIN_PASSWORD=admin \
   -e DATABASE_PATH=/app/data/database.sqlite \
+  -e STRM_TARGET_PATH=/media/strm \
   -v strm-manager-data:/app/data \
-  strm-manager
+  ghcr.io/sola614/strm-manager:latest
 ```
 
 使用 Docker Compose：
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-如果任务需要把 STRM 文件写入宿主机目录，请额外挂载目标目录，并在任务的 `targetPath` 中填写容器内路径，例如：
+更新到最新镜像：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+如需本地构建镜像：
+
+```bash
+docker build -t strm-manager .
+```
+
+如果任务需要把 STRM 文件写入宿主机目录，请额外挂载目标目录，并把 `STRM_TARGET_PATH` 设置为容器内路径，例如：
 
 ```yaml
+environment:
+  STRM_TARGET_PATH: /media/strm
 volumes:
   - strm-manager-data:/app/data
   - D:/media/strm:/media/strm
 ```
 
-然后任务目标目录填写：
+新增任务时，STRM 文件存放目录会默认填入：
 
 ```text
 /media/strm
@@ -105,6 +116,25 @@ volumes:
 - 初始密码：`admin`
 
 首次登录后必须修改密码。Docker 部署时建议通过 `ADMIN_PASSWORD` 设置初始管理员密码。
+
+## 忘记密码
+
+如果忘记管理员密码，可以临时设置 `RESET_ADMIN_PASSWORD` 重置密码。
+
+Docker Compose 示例：
+
+```yaml
+environment:
+  RESET_ADMIN_PASSWORD: admin123456
+```
+
+然后重启容器：
+
+```bash
+docker compose up -d
+```
+
+使用新密码登录后，系统会要求再次修改密码。修改完成后，请删除 `RESET_ADMIN_PASSWORD` 并再次重启容器，避免每次启动都把密码重置回该值。
 
 ## OpenList 服务配置
 
