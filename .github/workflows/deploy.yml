@@ -13,6 +13,10 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -34,13 +38,31 @@ jobs:
         username: ${{ github.actor }} # 自动获取执行构建的用户名
         password: ${{ secrets.GITHUB_TOKEN }} # 自动获取内置的临时密码
 
-    # 4. 构建并推送镜像
+    # 4. 生成镜像信息，并校验手动输入的 tag 是否符合 Docker 规范
+    - name: Prepare image metadata
+      id: meta
+      shell: bash
+      env:
+        IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+      run: |
+        tag="$IMAGE_TAG"
+        if [[ ! "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+          echo "Invalid Docker tag: $tag" >&2
+          exit 1
+        fi
+
+        image="ghcr.io/${GITHUB_REPOSITORY,,}"
+        echo "image=$image" >> "$GITHUB_OUTPUT"
+        echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+    # 5. 构建并推送镜像
     - name: Build and push
       uses: docker/build-push-action@v6
       with:
         context: .
         file: ./Dockerfile
         push: true
-        # 注意：打包出来的镜像名必须全部小写，这里使用 github.repository_owner 自动适配
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
         tags: |
-          ghcr.io/${{ github.repository_owner }}/my-app:${{ github.event.inputs.image_tag }}
+          ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
