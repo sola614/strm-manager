@@ -1,4 +1,4 @@
-import { App as AntdApp, ConfigProvider } from 'antd';
+import { App as AntdApp, ConfigProvider, Modal } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -13,6 +13,7 @@ import {
   getRun,
   getRuns,
   getServices,
+  getSetupRequired,
   getStoredToken,
   getTaskRuns,
   getTasks,
@@ -20,6 +21,7 @@ import {
   logout,
   restoreBackup,
   setStoredToken,
+  setupPassword as setupInitialPassword,
   triggerTaskRun,
   updateService,
   updateTask,
@@ -86,6 +88,9 @@ function AdminApp() {
   const [runServiceFilter, setRunServiceFilter] = useState<string>('all');
   const [runTaskFilter, setRunTaskFilter] = useState<string>('all');
   const [loginPassword, setLoginPassword] = useState('');
+  const [setupRequired, setSetupRequired] = useState(false);
+  const [setupPassword, setSetupPassword] = useState('');
+  const [setupConfirmPassword, setSetupConfirmPassword] = useState('');
   const [defaultStrmTargetPath, setDefaultStrmTargetPath] = useState('/media/strm');
 
   const [loginLoading, setLoginLoading] = useState(false);
@@ -115,13 +120,7 @@ function AdminApp() {
   const hasRunningRuns = runs.some((run) => run.status === 'running');
 
   useEffect(() => {
-    const token = getStoredToken();
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-
-    bootstrap().finally(() => setLoading(false));
+    initializeAuthState().finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -224,6 +223,21 @@ function AdminApp() {
     }
   }
 
+  async function initializeAuthState() {
+    const setupState = await getSetupRequired();
+    setSetupRequired(setupState.required);
+    if (setupState.required) {
+      setStoredToken(null);
+      setUser(null);
+      return;
+    }
+
+    const token = getStoredToken();
+    if (!token) return;
+
+    await bootstrap();
+  }
+
   function openRunDetail(run: TaskRun | null) {
     if (run) {
       setSelectedRun(run);
@@ -290,8 +304,16 @@ function AdminApp() {
       const result = await login(loginPassword.trim());
       handleAuthSuccess(result);
       setLoginPassword('');
+      if (result.mustChangePassword) {
+        setSetupRequired(true);
+        setStoredToken(null);
+        setUser(null);
+        message.success('请设置新的管理员密码。');
+        return;
+      }
+
       await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
-      message.success(result.mustChangePassword ? '请先修改默认密码。' : '登录成功。');
+      message.success('登录成功。');
     } catch (error) {
       message.error(formatError(error, '登录失败。'));
     } finally {
@@ -387,6 +409,23 @@ function AdminApp() {
     setSubmittingService(true);
     try {
       if (editingService) {
+        if (editingService.enabled && !values.enabled) {
+          const taskCount = tasks.filter((task) => task.serviceId === editingService.id).length;
+          const confirmed = await new Promise<boolean>((resolve) => {
+            Modal.confirm({
+              title: '禁用 OpenList 服务',
+              content: `禁用服务后，将同步禁用其关联的 ${taskCount} 个任务。确认继续？`,
+              okText: '确认禁用',
+              cancelText: '取消',
+              okButtonProps: { danger: true },
+              onOk: () => resolve(true),
+              onCancel: () => resolve(false),
+            });
+          });
+
+          if (!confirmed) return;
+        }
+
         await updateService(editingService.id, values);
         message.success('OpenList 服务已更新。');
       } else {
@@ -394,7 +433,7 @@ function AdminApp() {
         message.success('OpenList 服务已创建。');
       }
 
-      await refreshServices();
+      await Promise.all([refreshServices(), refreshTasks(), refreshRuns()]);
       setServiceDrawerOpen(false);
       setEditingService(null);
     } catch (error) {
@@ -415,9 +454,62 @@ function AdminApp() {
     }
   }
 
+  async function handleInitialPasswordSetup() {
+    const nextPassword = setupPassword.trim();
+    if (nextPassword.length < 8) {
+      message.warning('新密码至少需要 8 个字符。');
+      return;
+    }
+
+    if (nextPassword !== setupConfirmPassword.trim()) {
+      message.warning('两次输入的新密码不一致。');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const result = await setupInitialPassword(nextPassword);
+      setSetupRequired(false);
+      handleAuthSuccess(result);
+      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
+      message.success('管理员密码设置成功。');
+    } catch (error) {
+      message.error(formatError(error, '设置管理员密码失败。'));
+      throw error;
+    } finally {
+      setChangingPassword(false);
+    }
+    setSetupPassword('');
+    setSetupConfirmPassword('');
+  }
+
+  async function toggleServiceEnabled(service: OpenlistService, enabled: boolean) {
+    if (service.enabled === enabled) return;
+
+    try {
+      await updateService(service.id, {
+        name: service.name,
+        url: service.url,
+        token: service.token,
+        baseUrl: service.baseUrl,
+        enabled,
+      });
+      await Promise.all([refreshServices(), refreshTasks(), refreshRuns()]);
+      message.success(enabled ? '服务已启用。' : '服务已禁用。');
+    } catch (error) {
+      message.error(formatError(error, '更新服务状态失败。'));
+    }
+  }
+
   function openCreateTask() {
     if (!services.length) {
       message.warning('请先新增 OpenList 服务。');
+      changeView('services');
+      return;
+    }
+
+    if (!services.some((service) => service.enabled)) {
+      message.warning('请先启用至少一个 OpenList 服务。');
       changeView('services');
       return;
     }
@@ -478,6 +570,33 @@ function AdminApp() {
     }
   }
 
+  async function toggleTaskEnabled(task: SyncTask, enabled: boolean) {
+    if (task.enabled === enabled) return;
+
+    try {
+      await updateTask(task.id, {
+        name: task.name,
+        serviceId: task.serviceId,
+        sourcePath: task.sourcePath,
+        targetPath: task.targetPath,
+        scheduleEnabled: Boolean(task.cron),
+        cron: task.cron,
+        maxConcurrency: task.maxConcurrency,
+        downloadExtensions: task.downloadExtensions,
+        downloadSubtitles: task.downloadSubtitles,
+        requestDelaySeconds: task.requestDelaySeconds,
+        overwriteExisting: task.overwriteExisting,
+        enabled,
+        notifyEnabled: task.notifyEnabled,
+        callbackUrl: task.callbackUrl,
+      });
+      await Promise.all([refreshTasks(), refreshRuns()]);
+      message.success(enabled ? '任务已启用。' : '任务已禁用。');
+    } catch (error) {
+      message.error(formatError(error, '更新任务状态失败。'));
+    }
+  }
+
   async function triggerTask(task: SyncTask) {
     try {
       await triggerTaskRun(task.id);
@@ -492,21 +611,25 @@ function AdminApp() {
     return <LoginPage loadingOnly />;
   }
 
-  if (!user) {
+  if (setupRequired || !user) {
     return (
       <LoginPage
         version={ADMIN_VERSION}
+        setupMode={setupRequired}
         password={loginPassword}
-        loading={loginLoading}
+        newPassword={setupPassword}
+        confirmPassword={setupConfirmPassword}
+        loading={loginLoading || changingPassword}
         onPasswordChange={setLoginPassword}
-        onSubmit={handleLogin}
+        onNewPasswordChange={setSetupPassword}
+        onConfirmPasswordChange={setSetupConfirmPassword}
+        onSubmit={setupRequired ? handleInitialPasswordSetup : handleLogin}
       />
     );
   }
 
-  const mustChangePassword = user.mustChangePassword;
   const viewInfo = viewMeta[activeView];
-  const actionsDisabled = mustChangePassword;
+  const actionsDisabled = false;
 
   let pageContent = null;
 
@@ -533,6 +656,7 @@ function AdminApp() {
         onCreateService={openCreateService}
         onEditService={openEditService}
         onDeleteService={removeService}
+        onToggleServiceEnabled={toggleServiceEnabled}
         onRefresh={refreshServices}
       />
     );
@@ -552,6 +676,7 @@ function AdminApp() {
         onEditTask={openEditTask}
         onDeleteTask={removeTask}
         onTriggerTask={triggerTask}
+        onToggleTaskEnabled={toggleTaskEnabled}
         onOpenLog={openTaskLog}
         onCloseLog={() => setLatestLogModalOpen(false)}
         onViewRunDetail={openRunDetail}
@@ -637,8 +762,8 @@ function AdminApp() {
       />
 
       <PasswordModal
-        open={passwordOpen || mustChangePassword}
-        required={mustChangePassword}
+        open={passwordOpen}
+        required={false}
         loading={changingPassword}
         onClose={() => setPasswordOpen(false)}
         onSubmit={handlePasswordChange}

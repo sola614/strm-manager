@@ -4,6 +4,7 @@ export interface OpenlistService {
   url: string;
   token: string;
   baseUrl: string;
+  enabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -13,6 +14,7 @@ export interface OpenlistServiceFormValues {
   url: string;
   token: string;
   baseUrl: string;
+  enabled: boolean;
 }
 
 export interface SyncTask {
@@ -27,6 +29,7 @@ export interface SyncTask {
   downloadSubtitles: boolean;
   requestDelaySeconds: number;
   overwriteExisting: boolean;
+  enabled: boolean;
   notifyEnabled: boolean;
   callbackUrl: string;
   createdAt: string;
@@ -46,6 +49,7 @@ export interface SyncTaskFormValues {
   downloadSubtitles: boolean;
   requestDelaySeconds: number;
   overwriteExisting: boolean;
+  enabled: boolean;
   notifyEnabled: boolean;
   callbackUrl: string;
 }
@@ -97,6 +101,7 @@ export interface BackupPayload {
     url: string;
     token: string;
     baseUrl: string;
+    enabled: boolean;
   }>;
   tasks: Array<{
     id: string;
@@ -110,6 +115,7 @@ export interface BackupPayload {
     downloadSubtitles: boolean;
     requestDelaySeconds: number;
     overwriteExisting: boolean;
+    enabled: boolean;
     notifyEnabled: boolean;
     callbackUrl: string;
   }>;

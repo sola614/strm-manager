@@ -51,6 +51,39 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+app.get('/api/auth/setup-required', (_req, res) => {
+  res.json({
+    required: shouldForcePasswordChange(),
+  });
+});
+
+app.post('/api/auth/setup-password', (req, res) => {
+  if (!shouldForcePasswordChange()) {
+    return res.status(409).json({
+      code: 'SETUP_NOT_REQUIRED',
+      error: '当前不需要设置管理员密码。',
+    });
+  }
+
+  const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword.trim() : '';
+  if (newPassword.length < 8) {
+    return res.status(400).json({
+      code: 'INVALID_PASSWORD',
+      error: '新密码至少需要 8 个字符。',
+    });
+  }
+
+  setSetting('admin_password_hash', hashValue(newPassword));
+  setSetting('force_password_change', '0');
+
+  const token = issueSession();
+  res.json({
+    token,
+    username: DEFAULT_ADMIN_USERNAME,
+    mustChangePassword: false,
+  });
+});
+
 app.post('/api/auth/login', (req, res) => {
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
   if (!password || !verifyPassword(password)) {
@@ -141,6 +174,10 @@ app.put('/api/services/:id', requireAuth(), (req, res) => {
   }
 
   updateServiceRecord(req.params.id, service);
+  if (!service.enabled) {
+    disableTasksByServiceId(req.params.id);
+  }
+  loadTasks(req.params.id).forEach(scheduleTask);
   res.json(getServiceById(req.params.id));
 });
 
@@ -301,6 +338,7 @@ function createTables() {
       url TEXT NOT NULL,
       token TEXT NOT NULL,
       base_url TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -317,6 +355,7 @@ function createTables() {
       download_subtitles INTEGER NOT NULL DEFAULT 0,
       request_delay_seconds REAL NOT NULL DEFAULT 5,
       overwrite_existing INTEGER NOT NULL DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1,
       notify_enabled INTEGER NOT NULL DEFAULT 0,
       callback_url TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
@@ -349,6 +388,15 @@ function createTables() {
       value TEXT NOT NULL
     );
   `);
+
+  addColumnIfMissing('services', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
+  addColumnIfMissing('tasks', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
+}
+
+function addColumnIfMissing(tableName, columnName, columnDefinition) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  if (columns.some((column) => column.name === columnName)) return;
+  db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`).run();
 }
 
 function initializeSettings() {
@@ -448,7 +496,7 @@ function requireAuth(options = {}) {
     if (shouldForcePasswordChange() && !options.allowWhenPasswordChangeRequired) {
       return res.status(403).json({
         code: 'PASSWORD_CHANGE_REQUIRED',
-        error: '默认密码必须先修改后才能继续使用。',
+        error: '管理员密码需要先设置后才能继续使用。',
       });
     }
 
@@ -469,6 +517,7 @@ function normalizeTaskRow(row) {
     downloadSubtitles: Boolean(row.download_subtitles),
     requestDelaySeconds: Number(row.request_delay_seconds),
     overwriteExisting: Boolean(row.overwrite_existing),
+    enabled: Boolean(row.enabled),
     notifyEnabled: Boolean(row.notify_enabled),
     callbackUrl: row.callback_url,
     createdAt: row.created_at,
@@ -484,6 +533,7 @@ function loadServices() {
     url: row.url,
     token: row.token,
     baseUrl: row.base_url,
+    enabled: Boolean(row.enabled),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));
@@ -498,6 +548,7 @@ function getServiceById(id) {
     url: row.url,
     token: row.token,
     baseUrl: row.base_url,
+    enabled: Boolean(row.enabled),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -506,18 +557,18 @@ function getServiceById(id) {
 function createServiceRecord(service) {
   const timestamp = now();
   const result = db.prepare(`
-    INSERT INTO services (name, url, token, base_url, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(service.name, service.url, service.token, service.baseUrl, timestamp, timestamp);
+    INSERT INTO services (name, url, token, base_url, enabled, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(service.name, service.url, service.token, service.baseUrl, service.enabled ? 1 : 0, timestamp, timestamp);
   return String(result.lastInsertRowid);
 }
 
 function updateServiceRecord(id, service) {
   db.prepare(`
     UPDATE services
-    SET name = ?, url = ?, token = ?, base_url = ?, updated_at = ?
+    SET name = ?, url = ?, token = ?, base_url = ?, enabled = ?, updated_at = ?
     WHERE id = ?
-  `).run(service.name, service.url, service.token, service.baseUrl, now(), id);
+  `).run(service.name, service.url, service.token, service.baseUrl, service.enabled ? 1 : 0, now(), id);
 }
 
 function removeServiceRecord(id) {
@@ -537,6 +588,7 @@ function normalizeServicePayload(input, existing = null) {
   const url = normalizeUrl(input?.url ?? existing?.url ?? '');
   const token = sanitizeText(input?.token ?? existing?.token ?? '');
   const baseUrl = normalizeBaseUrl(input?.baseUrl ?? input?.base_url ?? existing?.baseUrl ?? '/');
+  const enabled = parseBoolean(input?.enabled ?? existing?.enabled ?? true);
   const errors = [];
 
   if (!url) errors.push('服务 URL 不能为空。');
@@ -556,7 +608,7 @@ function normalizeServicePayload(input, existing = null) {
 
   return {
     errors,
-    service: { name, url, token, baseUrl },
+    service: { name, url, token, baseUrl, enabled },
   };
 }
 
@@ -579,9 +631,9 @@ function createTaskRecord(task) {
     INSERT INTO tasks (
       name, service_id, source_path, target_path, cron,
       max_concurrency, download_extensions, download_subtitles, request_delay_seconds,
-      overwrite_existing, notify_enabled, callback_url,
+      overwrite_existing, enabled, notify_enabled, callback_url,
       created_at, updated_at, last_run_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     task.name,
     task.serviceId,
@@ -593,6 +645,7 @@ function createTaskRecord(task) {
     task.downloadSubtitles ? 1 : 0,
     task.requestDelaySeconds,
     task.overwriteExisting ? 1 : 0,
+    task.enabled ? 1 : 0,
     task.notifyEnabled ? 1 : 0,
     task.callbackUrl,
     timestamp,
@@ -617,6 +670,7 @@ function updateTaskRecord(id, task) {
       download_subtitles = ?,
       request_delay_seconds = ?,
       overwrite_existing = ?,
+      enabled = ?,
       notify_enabled = ?,
       callback_url = ?,
       updated_at = ?
@@ -632,6 +686,7 @@ function updateTaskRecord(id, task) {
     task.downloadSubtitles ? 1 : 0,
     task.requestDelaySeconds,
     task.overwriteExisting ? 1 : 0,
+    task.enabled ? 1 : 0,
     task.notifyEnabled ? 1 : 0,
     task.callbackUrl,
     now(),
@@ -645,6 +700,12 @@ function removeTaskRecord(id) {
 
 function updateTaskLastRunAt(id, value) {
   db.prepare('UPDATE tasks SET last_run_at = ?, updated_at = ? WHERE id = ?').run(value, now(), id);
+}
+
+function disableTasksByServiceId(serviceId) {
+  const tasks = loadTasks(serviceId);
+  db.prepare('UPDATE tasks SET enabled = 0, updated_at = ? WHERE service_id = ?').run(now(), serviceId);
+  tasks.forEach((task) => stopScheduledTask(task.id));
 }
 
 function findDuplicateTask(serviceId, sourcePath, targetPath, excludeId = null) {
@@ -661,7 +722,7 @@ function findDuplicateTask(serviceId, sourcePath, targetPath, excludeId = null) 
   return row ? String(row.id) : null;
 }
 
-function normalizeTaskPayload(input, existing = null) {
+function normalizeTaskPayload(input, existing = null, options = {}) {
   const name = sanitizeText(input?.name ?? existing?.name ?? '');
   const serviceId = sanitizeText(input?.serviceId ?? input?.service_id ?? existing?.serviceId ?? '');
   const sourcePath = normalizeRemotePath(input?.sourcePath ?? input?.source_path ?? existing?.sourcePath ?? '/');
@@ -686,17 +747,21 @@ function normalizeTaskPayload(input, existing = null) {
   const overwriteExisting = Boolean(
     input?.overwriteExisting ?? input?.overwrite_existing ?? existing?.overwriteExisting ?? false,
   );
+  const enabled = parseBoolean(input?.enabled ?? existing?.enabled ?? true);
   const notifyEnabled = Boolean(
     input?.notifyEnabled ?? input?.notify_enabled ?? existing?.notifyEnabled ?? false,
   );
   const callbackUrl = sanitizeText(input?.callbackUrl ?? input?.callback_url ?? existing?.callbackUrl ?? '');
   const errors = [];
+  const selectedService = serviceId ? getServiceById(serviceId) : null;
 
   if (!name) errors.push('任务名称不能为空。');
   if (!serviceId) {
     errors.push('必须先选择一个 OpenList 服务。');
-  } else if (!getServiceById(serviceId)) {
+  } else if (!selectedService) {
     errors.push('所选 OpenList 服务不存在。');
+  } else if (!selectedService.enabled && !options.allowDisabledService) {
+    errors.push('所选 OpenList 服务已禁用，请先启用服务。');
   }
   if (!targetPath) errors.push('目标输出目录不能为空。');
   if (!downloadExtensions) errors.push('自定义下载后缀不能为空。');
@@ -727,6 +792,7 @@ function normalizeTaskPayload(input, existing = null) {
       downloadSubtitles,
       requestDelaySeconds,
       overwriteExisting,
+      enabled,
       notifyEnabled,
       callbackUrl,
     },
@@ -815,7 +881,9 @@ function pruneRuns() {
 
 function scheduleTask(task) {
   stopScheduledTask(task.id);
-  if (!task.cron || !cron.validate(task.cron)) return;
+  if (!task.enabled || !task.cron || !cron.validate(task.cron)) return;
+  const service = getServiceById(task.serviceId);
+  if (!service?.enabled) return;
 
   const job = cron.schedule(task.cron, () => {
     startTaskRun(task.id, 'schedule').catch((error) => {
@@ -843,11 +911,33 @@ async function startTaskRun(taskId, triggerType) {
     throw error;
   }
 
+  if (!task.enabled) {
+    if (triggerType === 'schedule') {
+      return null;
+    }
+
+    const error = new Error('任务已禁用，请启用后再执行。');
+    error.status = 409;
+    error.code = 'TASK_DISABLED';
+    throw error;
+  }
+
   const service = getServiceById(task.serviceId);
   if (!service) {
     const error = new Error('任务对应的 OpenList 服务不存在。');
     error.status = 409;
     error.code = 'TASK_SERVICE_MISSING';
+    throw error;
+  }
+
+  if (!service.enabled) {
+    if (triggerType === 'schedule') {
+      return null;
+    }
+
+    const error = new Error('任务所属服务已禁用，请启用服务后再执行。');
+    error.status = 409;
+    error.code = 'TASK_SERVICE_DISABLED';
     throw error;
   }
 
@@ -1343,6 +1433,17 @@ function clampFloat(value, min, max) {
   return Math.max(min, Math.min(max, parsed));
 }
 
+function parseBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  }
+  return Boolean(value);
+}
+
 function safeParseJsonArray(value) {
   try {
     const parsed = JSON.parse(value || '[]');
@@ -1369,6 +1470,7 @@ function buildConfigYaml() {
     lines.push(`    url: ${JSON.stringify(service.url)}`);
     lines.push(`    token: ${JSON.stringify(service.token)}`);
     lines.push(`    baseUrl: ${JSON.stringify(service.baseUrl)}`);
+    lines.push(`    enabled: ${service.enabled}`);
   });
 
   lines.push('', 'tasks:');
@@ -1388,6 +1490,7 @@ function buildConfigYaml() {
     lines.push(`    downloadSubtitles: ${task.downloadSubtitles}`);
     lines.push(`    requestDelaySeconds: ${task.requestDelaySeconds}`);
     lines.push(`    overwriteExisting: ${task.overwriteExisting}`);
+    lines.push(`    enabled: ${task.enabled}`);
     lines.push(`    notifyEnabled: ${task.notifyEnabled}`);
     lines.push(`    callbackUrl: ${JSON.stringify(task.callbackUrl)}`);
   });
@@ -1405,6 +1508,7 @@ function buildBackupPayload() {
       url: service.url,
       token: service.token,
       baseUrl: service.baseUrl,
+      enabled: service.enabled,
     })),
     tasks: loadTasks().map((task) => ({
       id: task.id,
@@ -1418,6 +1522,7 @@ function buildBackupPayload() {
       downloadSubtitles: task.downloadSubtitles,
       requestDelaySeconds: task.requestDelaySeconds,
       overwriteExisting: task.overwriteExisting,
+      enabled: task.enabled,
       notifyEnabled: task.notifyEnabled,
       callbackUrl: task.callbackUrl,
     })),
@@ -1437,10 +1542,14 @@ function restoreBackupPayload(payload) {
     if (result.errors.length > 0) {
       throw new Error(`服务恢复失败：${result.errors.join(' ')}`);
     }
-    return result.service;
+    return {
+      originalId: service?.id,
+      service: result.service,
+    };
   });
 
   const serviceIdMap = new Map();
+  const serviceUrlMap = new Map();
 
   const tx = db.transaction(() => {
     stopAllScheduledTasks();
@@ -1448,23 +1557,32 @@ function restoreBackupPayload(payload) {
     db.prepare('DELETE FROM tasks').run();
     db.prepare('DELETE FROM services').run();
 
-    for (const service of normalizedServices) {
-      const newId = createServiceRecord(service);
-      if (service.id) {
-        serviceIdMap.set(String(service.id), newId);
+    for (const item of normalizedServices) {
+      const newId = createServiceRecord(item.service);
+      if (item.originalId) {
+        serviceIdMap.set(String(item.originalId), newId);
+      }
+      if (item.service.url) {
+        serviceUrlMap.set(item.service.url, newId);
       }
     }
 
     for (const task of tasks) {
-      const mappedServiceId = serviceIdMap.get(String(task.serviceId));
+      let mappedServiceId = serviceIdMap.get(String(task.serviceId));
+      if (!mappedServiceId && services.length === 1) {
+        mappedServiceId = serviceUrlMap.get(normalizedServices[0]?.service.url);
+      }
       if (!mappedServiceId) {
-        throw new Error(`任务 ${task.name || task.id || ''} 对应的服务不存在。`);
+        const knownServiceIds = Array.from(serviceIdMap.keys()).join(', ') || '无';
+        throw new Error(
+          `任务 ${task.name || task.id || ''} 对应的服务不存在。任务 serviceId=${String(task.serviceId)}，备份服务 ID=${knownServiceIds}`,
+        );
       }
 
       const result = normalizeTaskPayload({
         ...task,
         serviceId: mappedServiceId,
-      });
+      }, null, { allowDisabledService: true });
 
       if (result.errors.length > 0) {
         throw new Error(`任务恢复失败：${result.errors.join(' ')}`);

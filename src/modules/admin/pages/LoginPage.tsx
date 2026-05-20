@@ -7,9 +7,14 @@ const { Title, Paragraph, Text } = Typography;
 interface LoginPageProps {
   loadingOnly?: boolean;
   version?: string;
+  setupMode?: boolean;
   password?: string;
+  newPassword?: string;
+  confirmPassword?: string;
   loading?: boolean;
   onPasswordChange?: (value: string) => void;
+  onNewPasswordChange?: (value: string) => void;
+  onConfirmPasswordChange?: (value: string) => void;
   onSubmit?: () => void;
 }
 
@@ -32,27 +37,53 @@ export function LoginPage(props: LoginPageProps) {
           <div>
             <Text className="eyebrow">管理员后台</Text>
             <Title level={2} style={{ marginTop: 8, marginBottom: 8 }}>
-              登录管理面板
+              {props.setupMode ? '设置管理员密码' : '登录管理面板'}
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              默认用户名为 <strong>admin</strong>，默认密码为 <strong>admin</strong>。
-              首次登录后系统会强制跳转修改密码。
+              {props.setupMode
+                ? '请设置新的管理员密码，完成后将进入管理面板。'
+                : '请输入管理员密码进入管理面板。'}
             </Paragraph>
           </div>
 
-          <Input.Password
-            size="large"
-            prefix={<LockOutlined />}
-            placeholder="请输入管理员密码"
-            value={props.password}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              props.onPasswordChange?.(event.target.value)
-            }
-            onPressEnter={props.onSubmit}
-          />
+          {props.setupMode ? (
+            <>
+              <Input.Password
+                size="large"
+                prefix={<LockOutlined />}
+                placeholder="新管理员密码，至少 8 个字符"
+                value={props.newPassword}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  props.onNewPasswordChange?.(event.target.value)
+                }
+                onPressEnter={props.onSubmit}
+              />
+              <Input.Password
+                size="large"
+                prefix={<LockOutlined />}
+                placeholder="再次输入新密码"
+                value={props.confirmPassword}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  props.onConfirmPasswordChange?.(event.target.value)
+                }
+                onPressEnter={props.onSubmit}
+              />
+            </>
+          ) : (
+            <Input.Password
+              size="large"
+              prefix={<LockOutlined />}
+              placeholder="请输入管理员密码"
+              value={props.password}
+              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                props.onPasswordChange?.(event.target.value)
+              }
+              onPressEnter={props.onSubmit}
+            />
+          )}
 
           <Button type="primary" size="large" block loading={props.loading} onClick={props.onSubmit}>
-            登录
+            {props.setupMode ? '确认设置' : '登录'}
           </Button>
 
           <Text type="secondary">{props.version}</Text>

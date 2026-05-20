@@ -1,4 +1,4 @@
-import { Button, Drawer, Form, Input, Space } from 'antd';
+import { Button, Drawer, Form, Input, Radio, Space } from 'antd';
 import { OpenlistService, OpenlistServiceFormValues } from '../../../types';
 import { defaultServiceForm } from '../constants';
 
@@ -19,6 +19,7 @@ export function ServiceDrawer(props: ServiceDrawerProps) {
         url: props.service.url,
         token: props.service.token,
         baseUrl: props.service.baseUrl,
+        enabled: props.service.enabled,
       }
     : defaultServiceForm;
 
@@ -77,6 +78,15 @@ export function ServiceDrawer(props: ServiceDrawerProps) {
           rules={[{ required: true, message: '请输入 Base URL' }]}
         >
           <Input placeholder="/" />
+        </Form.Item>
+
+        <Form.Item label="是否启用服务" name="enabled">
+          <Radio.Group
+            options={[
+              { label: '否', value: false },
+              { label: '是', value: true },
+            ]}
+          />
         </Form.Item>
       </Form>
     </Drawer>

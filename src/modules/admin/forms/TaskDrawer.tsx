@@ -181,12 +181,13 @@ export function TaskDrawer(props: TaskDrawerProps) {
         downloadSubtitles: props.task.downloadSubtitles,
         requestDelaySeconds: props.task.requestDelaySeconds,
         overwriteExisting: props.task.overwriteExisting,
+        enabled: props.task.enabled,
         notifyEnabled: props.task.notifyEnabled,
         callbackUrl: props.task.callbackUrl,
       }
     : {
         ...defaultTaskForm,
-        serviceId: props.services[0]?.id || '',
+        serviceId: props.services.find((service) => service.enabled)?.id || '',
         targetPath: props.defaultTargetPath,
       };
 
@@ -250,8 +251,9 @@ export function TaskDrawer(props: TaskDrawerProps) {
         >
           <Select
             options={props.services.map((service) => ({
-              label: `${getServiceDisplayName(service)} (${service.url})`,
+              label: `${getServiceDisplayName(service)} (${service.url})${service.enabled ? '' : ' - 已禁用'}`,
               value: service.id,
+              disabled: !service.enabled,
             }))}
           />
         </Form.Item>
@@ -342,7 +344,17 @@ export function TaskDrawer(props: TaskDrawerProps) {
         </Row>
 
         <Row gutter={16}>
-          <Col span={12}>
+          <Col span={8}>
+            <Form.Item label="是否启用任务" name="enabled">
+              <Radio.Group
+                options={[
+                  { label: '否', value: false },
+                  { label: '是', value: true },
+                ]}
+              />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
             <Form.Item label="是否覆盖原文件" name="overwriteExisting">
               <Radio.Group
                 options={[
@@ -352,7 +364,7 @@ export function TaskDrawer(props: TaskDrawerProps) {
               />
             </Form.Item>
           </Col>
-          <Col span={12}>
+          <Col span={8}>
             <Form.Item label="通知选项" name="notifyEnabled">
               <Radio.Group
                 options={[

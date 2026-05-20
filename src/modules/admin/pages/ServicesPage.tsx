@@ -1,5 +1,5 @@
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Button, Card, Popconfirm, Space, Table, Tag, Typography } from 'antd';
+import { Button, Card, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useState } from 'react';
 import { OpenlistService, SyncTask } from '../../../types';
@@ -14,11 +14,29 @@ interface ServicesPageProps {
   onCreateService: () => void;
   onEditService: (service: OpenlistService) => void;
   onDeleteService: (service: OpenlistService) => void;
+  onToggleServiceEnabled: (service: OpenlistService, enabled: boolean) => void;
   onRefresh: () => void;
 }
 
 export function ServicesPage(props: ServicesPageProps) {
   const [pageSize, setPageSize] = useState(() => getStoredPageSize('services'));
+
+  function changeServiceEnabled(service: OpenlistService, enabled: boolean) {
+    if (enabled || !service.enabled) {
+      props.onToggleServiceEnabled(service, enabled);
+      return;
+    }
+
+    const taskCount = props.tasks.filter((task) => task.serviceId === service.id).length;
+    Modal.confirm({
+      title: '禁用 OpenList 服务',
+      content: `禁用服务后，将同步禁用其关联的 ${taskCount} 个任务。确认继续？`,
+      okText: '确认禁用',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => props.onToggleServiceEnabled(service, false),
+    });
+  }
 
   const columns: ColumnsType<OpenlistService> = [
     {
@@ -42,6 +60,23 @@ export function ServicesPage(props: ServicesPageProps) {
       dataIndex: 'baseUrl',
       key: 'baseUrl',
       render: (value: string) => <Tag>{value}</Tag>,
+    },
+    {
+      title: '状态',
+      key: 'enabled',
+      render: (_value: unknown, record: OpenlistService) => (
+        <Select
+          size="small"
+          value={record.enabled}
+          style={{ width: 96 }}
+          disabled={props.actionsDisabled}
+          onChange={(enabled) => changeServiceEnabled(record, enabled)}
+          options={[
+            { label: '已启用', value: true },
+            { label: '已禁用', value: false },
+          ]}
+        />
+      ),
     },
     {
       title: '关联任务数',

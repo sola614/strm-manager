@@ -15,6 +15,7 @@ export const defaultServiceForm: OpenlistServiceFormValues = {
   url: '',
   token: '',
   baseUrl: '/',
+  enabled: true,
 };
 
 export const defaultTaskForm: SyncTaskFormValues = {
@@ -29,6 +30,7 @@ export const defaultTaskForm: SyncTaskFormValues = {
   downloadSubtitles: false,
   requestDelaySeconds: 5,
   overwriteExisting: false,
+  enabled: true,
   notifyEnabled: false,
   callbackUrl: '',
 };

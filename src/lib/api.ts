@@ -85,6 +85,18 @@ export function login(password: string) {
   });
 }
 
+export function getSetupRequired() {
+  return requestJson<{ required: boolean }>('/api/auth/setup-required');
+}
+
+export function setupPassword(newPassword: string) {
+  return requestJson<AuthResponse>('/api/auth/setup-password', {
+    method: 'POST',
+    headers: buildHeaders(undefined, true),
+    body: JSON.stringify({ newPassword }),
+  });
+}
+
 export function getCurrentUser() {
   return requestJson<SessionUser>('/api/auth/me');
 }

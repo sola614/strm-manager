@@ -30,6 +30,7 @@ interface TasksPageProps {
   onEditTask: (task: SyncTask) => void;
   onDeleteTask: (task: SyncTask) => void;
   onTriggerTask: (task: SyncTask) => void;
+  onToggleTaskEnabled: (task: SyncTask, enabled: boolean) => void;
   onOpenLog: (task: SyncTask) => void;
   onCloseLog: () => void;
   onViewRunDetail: (run: TaskRun | null) => void;
@@ -38,6 +39,11 @@ interface TasksPageProps {
 
 export function TasksPage(props: TasksPageProps) {
   const [pageSize, setPageSize] = useState(() => getStoredPageSize('tasks'));
+
+  function canRunTask(task: SyncTask) {
+    const service = props.services.find((item) => item.id === task.serviceId);
+    return task.enabled && service?.enabled !== false;
+  }
 
   const columns: ColumnsType<SyncTask> = [
     {
@@ -71,6 +77,23 @@ export function TasksPage(props: TasksPageProps) {
       ellipsis: true,
     },
     {
+      title: '状态',
+      key: 'enabled',
+      render: (_value: unknown, record: SyncTask) => (
+        <Select
+          size="small"
+          value={record.enabled}
+          style={{ width: 96 }}
+          disabled={props.actionsDisabled}
+          onChange={(enabled) => props.onToggleTaskEnabled(record, enabled)}
+          options={[
+            { label: '已启用', value: true },
+            { label: '已禁用', value: false },
+          ]}
+        />
+      ),
+    },
+    {
       title: 'Cron',
       dataIndex: 'cron',
       key: 'cron',
@@ -80,7 +103,7 @@ export function TasksPage(props: TasksPageProps) {
       title: '下次执行',
       key: 'nextRun',
       render: (_value: unknown, record: SyncTask) =>
-        record.cron ? getNextRun(record.cron) || '-' : '-',
+        canRunTask(record) && record.cron ? getNextRun(record.cron) || '-' : '-',
     },
     {
       title: '最近运行',
@@ -103,7 +126,7 @@ export function TasksPage(props: TasksPageProps) {
           <Button
             size="small"
             type="primary"
-            disabled={props.actionsDisabled}
+            disabled={props.actionsDisabled || !canRunTask(record)}
             onClick={() => props.onTriggerTask(record)}
           >
             立即执行
