@@ -7,15 +7,16 @@ import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import cron from 'node-cron';
 import multer from 'multer';
+import packageInfo from './package.json' with { type: 'json' };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = Number(process.env.PORT || 4173);
+const ENV_PORT = clampInteger(process.env.PORT || 4173, 1, 65535);
 const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 const RESET_ADMIN_PASSWORD = process.env.RESET_ADMIN_PASSWORD || '';
-const DEFAULT_STRM_TARGET_PATH = process.env.STRM_TARGET_PATH || '/media/strm';
+const ENV_DEFAULT_STRM_TARGET_PATH = sanitizeText(process.env.STRM_TARGET_PATH) || '/media/strm';
 const DATABASE_PATH = resolveDatabasePath(
   process.env.DATABASE_PATH || path.join('data', 'database.sqlite'),
 );
@@ -23,6 +24,8 @@ const DIST_PATH = path.join(__dirname, 'dist');
 const MAX_RUN_HISTORY = 200;
 const DEFAULT_DOWNLOAD_EXTENSIONS = 'mp4,mkv';
 const DEFAULT_SUBTITLE_EXTENSIONS = 'srt,ass';
+const DEFAULT_LOG_CLEANUP_ENABLED = true;
+const DEFAULT_LOG_RETENTION_DAYS = 7;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 fs.mkdirSync(path.dirname(DATABASE_PATH), { recursive: true });
@@ -31,6 +34,7 @@ const app = express();
 const db = new Database(DATABASE_PATH);
 const scheduledJobs = new Map();
 const activeRuns = new Set();
+let runtimePort = ENV_PORT;
 
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
@@ -41,6 +45,8 @@ db.pragma('busy_timeout = 5000');
 
 createTables();
 initializeSettings();
+runtimePort = getConfiguredPort();
+startMaintenanceJobs();
 loadTasks().forEach(scheduleTask);
 
 app.get('/api/health', (_req, res) => {
@@ -109,9 +115,24 @@ app.get('/api/auth/me', requireAuth({ allowWhenPasswordChangeRequired: true }), 
 });
 
 app.get('/api/config', requireAuth({ allowWhenPasswordChangeRequired: true }), (_req, res) => {
-  res.json({
-    defaultStrmTargetPath: DEFAULT_STRM_TARGET_PATH,
-  });
+  res.json(getAppConfigPayload());
+});
+
+app.put('/api/config', requireAuth(), (req, res) => {
+  const { config, errors } = normalizeAppConfigPayload(req.body);
+  if (errors.length > 0) {
+    return res.status(400).json({
+      code: 'INVALID_CONFIG',
+      error: errors.join(' '),
+    });
+  }
+
+  applyAppConfig(config);
+  if (config.logCleanupEnabled) {
+    cleanupExpiredRuns();
+  }
+
+  res.json(getAppConfigPayload());
 });
 
 app.post('/api/auth/logout', requireAuth({ allowWhenPasswordChangeRequired: true }), (_req, res) => {
@@ -281,6 +302,30 @@ app.get('/api/runs', requireAuth(), (_req, res) => {
   res.json(loadRuns());
 });
 
+app.post('/api/runs/bulk-delete', requireAuth(), (req, res) => {
+  const ids = Array.isArray(req.body?.ids)
+    ? Array.from(new Set(req.body.ids.map((id) => sanitizeText(id)).filter(Boolean)))
+    : [];
+
+  if (!ids.length) {
+    return res.status(400).json({
+      code: 'INVALID_RUN_IDS',
+      error: '请选择至少一条运行记录。',
+    });
+  }
+
+  try {
+    const deletedCount = deleteRunRecords(ids);
+    res.json({ deletedCount });
+  } catch (error) {
+    const status = typeof error?.status === 'number' ? error.status : 400;
+    res.status(status).json({
+      code: error?.code || 'RUN_DELETE_FAILED',
+      error: formatError(error),
+    });
+  }
+});
+
 app.get('/api/runs/:id', requireAuth(), (req, res) => {
   const run = getRunById(req.params.id);
   if (!run) {
@@ -291,6 +336,26 @@ app.get('/api/runs/:id', requireAuth(), (req, res) => {
   }
 
   res.json(run);
+});
+
+app.delete('/api/runs/:id', requireAuth(), (req, res) => {
+  const run = getRunById(req.params.id);
+  if (!run) {
+    return res.status(404).json({
+      code: 'RUN_NOT_FOUND',
+      error: '运行记录不存在。',
+    });
+  }
+
+  if (run.status === 'running') {
+    return res.status(409).json({
+      code: 'RUN_STILL_RUNNING',
+      error: '运行中的记录暂不支持删除，请等待任务完成后再试。',
+    });
+  }
+
+  deleteRunRecords([req.params.id]);
+  res.status(204).end();
 });
 
 app.get('/api/backup/export', requireAuth(), (_req, res) => {
@@ -322,8 +387,8 @@ if (fs.existsSync(path.join(DIST_PATH, 'index.html'))) {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`Strm Manager listening on http://localhost:${PORT}`);
+app.listen(runtimePort, () => {
+  console.log(`Strm Manager listening on http://localhost:${runtimePort}`);
 });
 
 function resolveDatabasePath(databasePath) {
@@ -419,6 +484,24 @@ function initializeSettings() {
   if (!getSetting('session_token_hash')) {
     setSetting('session_token_hash', '');
   }
+
+  if (!getSetting('app_port')) {
+    setSetting('app_port', String(ENV_PORT));
+  }
+
+  if (!getSetting('default_strm_target_path')) {
+    setSetting('default_strm_target_path', ENV_DEFAULT_STRM_TARGET_PATH);
+  }
+
+  if (!getSetting('log_cleanup_enabled')) {
+    setSetting('log_cleanup_enabled', DEFAULT_LOG_CLEANUP_ENABLED ? '1' : '0');
+  }
+
+  if (!getSetting('log_retention_days')) {
+    setSetting('log_retention_days', String(DEFAULT_LOG_RETENTION_DAYS));
+  }
+
+  applyAppConfig(getAppConfigPayload());
 }
 
 function hashValue(value) {
@@ -448,6 +531,80 @@ function setSetting(key, value) {
     VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
   `).run(key, value);
+}
+
+function getConfiguredPort() {
+  return clampInteger(getSetting('app_port') || ENV_PORT, 1, 65535);
+}
+
+function getConfiguredStrmTargetPath() {
+  return sanitizeText(getSetting('default_strm_target_path') || ENV_DEFAULT_STRM_TARGET_PATH) || ENV_DEFAULT_STRM_TARGET_PATH;
+}
+
+function getLogCleanupEnabled() {
+  return parseBoolean(getSetting('log_cleanup_enabled') ?? (DEFAULT_LOG_CLEANUP_ENABLED ? '1' : '0'));
+}
+
+function getLogRetentionDays() {
+  return clampInteger(getSetting('log_retention_days') || DEFAULT_LOG_RETENTION_DAYS, 1, 3650);
+}
+
+function getAppConfigPayload() {
+  return {
+    port: getConfiguredPort(),
+    runtimePort: runtimePort || ENV_PORT,
+    defaultStrmTargetPath: getConfiguredStrmTargetPath(),
+    logCleanupEnabled: getLogCleanupEnabled(),
+    logRetentionDays: getLogRetentionDays(),
+    databasePath: DATABASE_PATH,
+    nodeEnv: process.env.NODE_ENV || 'development',
+    resetAdminPasswordEnabled: Boolean(RESET_ADMIN_PASSWORD),
+  };
+}
+
+function normalizeAppConfigPayload(input, fallback = getAppConfigPayload()) {
+  const rawPort = input?.port ?? fallback.port;
+  const rawTargetPath = input?.defaultStrmTargetPath ?? input?.default_strm_target_path ?? fallback.defaultStrmTargetPath;
+  const rawLogCleanupEnabled = input?.logCleanupEnabled ?? input?.log_cleanup_enabled ?? fallback.logCleanupEnabled;
+  const rawLogRetentionDays = input?.logRetentionDays ?? input?.log_retention_days ?? fallback.logRetentionDays;
+
+  const port = Number.parseInt(String(rawPort), 10);
+  const defaultStrmTargetPath = sanitizeText(rawTargetPath);
+  const logRetentionDays = Number.parseInt(String(rawLogRetentionDays), 10);
+  const logCleanupEnabled = parseBoolean(rawLogCleanupEnabled);
+  const errors = [];
+
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    errors.push('PORT 必须是 1 到 65535 之间的整数。');
+  }
+
+  if (!defaultStrmTargetPath) {
+    errors.push('STRM 默认输出目录不能为空。');
+  }
+
+  if (!Number.isInteger(logRetentionDays) || logRetentionDays < 1 || logRetentionDays > 3650) {
+    errors.push('日志保留天数必须是 1 到 3650 之间的整数。');
+  }
+
+  return {
+    errors,
+    config: {
+      port: Number.isInteger(port) ? port : fallback.port,
+      defaultStrmTargetPath: defaultStrmTargetPath || fallback.defaultStrmTargetPath,
+      logCleanupEnabled,
+      logRetentionDays: Number.isInteger(logRetentionDays) ? logRetentionDays : fallback.logRetentionDays,
+    },
+  };
+}
+
+function applyAppConfig(config) {
+  setSetting('app_port', String(clampInteger(config.port, 1, 65535)));
+  setSetting(
+    'default_strm_target_path',
+    sanitizeText(config.defaultStrmTargetPath) || ENV_DEFAULT_STRM_TARGET_PATH,
+  );
+  setSetting('log_cleanup_enabled', config.logCleanupEnabled ? '1' : '0');
+  setSetting('log_retention_days', String(clampInteger(config.logRetentionDays, 1, 3650)));
 }
 
 function shouldForcePasswordChange() {
@@ -858,7 +1015,7 @@ function mapRunRow(row) {
 }
 
 function loadRuns() {
-  return db.prepare('SELECT * FROM runs ORDER BY started_at DESC LIMIT 50').all().map(mapRunRow);
+  return db.prepare('SELECT * FROM runs ORDER BY started_at DESC LIMIT ?').all(MAX_RUN_HISTORY).map(mapRunRow);
 }
 
 function loadRunsByTask(taskId) {
@@ -870,6 +1027,29 @@ function getRunById(id) {
   return row ? mapRunRow(row) : null;
 }
 
+function listRunsByIds(ids) {
+  if (!ids.length) return [];
+  const placeholders = ids.map(() => '?').join(', ');
+  return db.prepare(`SELECT * FROM runs WHERE id IN (${placeholders})`).all(...ids).map(mapRunRow);
+}
+
+function deleteRunRecords(ids) {
+  const targetIds = Array.from(new Set(ids.map((id) => sanitizeText(id)).filter(Boolean)));
+  if (!targetIds.length) return 0;
+
+  const existingRuns = listRunsByIds(targetIds);
+  if (existingRuns.some((run) => run.status === 'running')) {
+    const error = new Error('运行中的记录暂不支持删除，请等待任务完成后再试。');
+    error.status = 409;
+    error.code = 'RUN_STILL_RUNNING';
+    throw error;
+  }
+
+  const placeholders = targetIds.map(() => '?').join(', ');
+  const result = db.prepare(`DELETE FROM runs WHERE id IN (${placeholders})`).run(...targetIds);
+  return Number(result.changes || 0);
+}
+
 function pruneRuns() {
   db.prepare(`
     DELETE FROM runs
@@ -877,6 +1057,33 @@ function pruneRuns() {
       SELECT id FROM runs ORDER BY started_at DESC LIMIT ?
     )
   `).run(MAX_RUN_HISTORY);
+}
+
+function cleanupExpiredRuns() {
+  if (!getLogCleanupEnabled()) {
+    return 0;
+  }
+
+  const retentionDays = getLogRetentionDays();
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+  const result = db.prepare(`
+    DELETE FROM runs
+    WHERE status != 'running'
+      AND COALESCE(completed_at, started_at) < ?
+  `).run(cutoff);
+
+  return Number(result.changes || 0);
+}
+
+function startMaintenanceJobs() {
+  cleanupExpiredRuns();
+  cron.schedule('0 15 3 * * *', () => {
+    try {
+      cleanupExpiredRuns();
+    } catch (error) {
+      console.error('Failed to cleanup expired runs:', error);
+    }
+  });
 }
 
 function scheduleTask(task) {
@@ -1500,8 +1707,14 @@ function buildConfigYaml() {
 
 function buildBackupPayload() {
   return {
-    version: '1.1.0',
+    version: packageInfo.version,
     exportedAt: now(),
+    appConfig: {
+      port: getConfiguredPort(),
+      defaultStrmTargetPath: getConfiguredStrmTargetPath(),
+      logCleanupEnabled: getLogCleanupEnabled(),
+      logRetentionDays: getLogRetentionDays(),
+    },
     services: loadServices().map((service) => ({
       id: service.id,
       name: service.name,
@@ -1534,8 +1747,13 @@ function restoreBackupPayload(payload) {
     throw new Error('备份文件格式无效。');
   }
 
+  const appConfig = payload.appConfig ? normalizeAppConfigPayload(payload.appConfig, getAppConfigPayload()) : null;
   const services = Array.isArray(payload.services) ? payload.services : [];
   const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+
+  if (appConfig?.errors?.length) {
+    throw new Error(`系统配置恢复失败：${appConfig.errors.join(' ')}`);
+  }
 
   const normalizedServices = services.map((service) => {
     const result = normalizeServicePayload(service);
@@ -1556,6 +1774,10 @@ function restoreBackupPayload(payload) {
     db.prepare('DELETE FROM runs').run();
     db.prepare('DELETE FROM tasks').run();
     db.prepare('DELETE FROM services').run();
+
+    if (appConfig?.config) {
+      applyAppConfig(appConfig.config);
+    }
 
     for (const item of normalizedServices) {
       const newId = createServiceRecord(item.service);
@@ -1593,6 +1815,7 @@ function restoreBackupPayload(payload) {
   });
 
   tx();
+  cleanupExpiredRuns();
   loadTasks().forEach(scheduleTask);
 
   return {

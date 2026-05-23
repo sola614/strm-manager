@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: 'v1.0.0'
+        description: 'Docker 镜像标签，留空时默认使用 package.json 的 version'
         required: true
-        default: 'latest'
+        default: ''
 
 # 必须要赋予工作流读写 Packages 的权限
 permissions:
@@ -46,6 +46,9 @@ jobs:
         IMAGE_TAG: ${{ github.event.inputs.image_tag }}
       run: |
         tag="$IMAGE_TAG"
+        if [[ -z "$tag" ]]; then
+          tag=$(node -p "require('./package.json').version")
+        fi
         if [[ ! "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
           echo "Invalid Docker tag: $tag" >&2
           exit 1

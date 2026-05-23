@@ -1,10 +1,12 @@
 import { App as AntdApp, ConfigProvider, Modal } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  bulkDeleteRuns,
   changePassword,
   createService,
   createTask,
+  deleteRun,
   deleteService,
   deleteTask,
   exportBackup,
@@ -23,25 +25,27 @@ import {
   setStoredToken,
   setupPassword as setupInitialPassword,
   triggerTaskRun,
+  updateAppConfig,
   updateService,
   updateTask,
 } from './lib/api';
 import { PasswordModal } from './modules/admin/forms/PasswordModal';
 import { ServiceDrawer } from './modules/admin/forms/ServiceDrawer';
 import { TaskDrawer } from './modules/admin/forms/TaskDrawer';
-import { ADMIN_VERSION, defaultServiceForm, defaultTaskForm, viewMeta } from './modules/admin/constants';
+import { ADMIN_VERSION, defaultAppConfigForm, defaultServiceForm, defaultTaskForm, viewMeta } from './modules/admin/constants';
 import { AdminShell } from './modules/admin/layout/AdminShell';
 import { DashboardPage } from './modules/admin/pages/DashboardPage';
 import { BackupPage } from './modules/admin/pages/BackupPage';
 import { LoginPage } from './modules/admin/pages/LoginPage';
 import { RunDetailPage } from './modules/admin/pages/RunDetailPage';
 import { RunsPage } from './modules/admin/pages/RunsPage';
+import { SettingsPage } from './modules/admin/pages/SettingsPage';
 import { ServicesPage } from './modules/admin/pages/ServicesPage';
 import { TasksPage } from './modules/admin/pages/TasksPage';
 import { getServiceDisplayName } from './modules/admin/utils';
-import { ActiveView, AuthResponse, OpenlistService, SessionUser, SyncTask, TaskRun } from './types';
+import { ActiveView, AppConfig, AuthResponse, OpenlistService, SessionUser, SyncTask, TaskRun } from './types';
 
-const validViews: ActiveView[] = ['dashboard', 'services', 'tasks', 'runs', 'runDetail', 'backup'];
+const validViews: ActiveView[] = ['dashboard', 'services', 'tasks', 'runs', 'runDetail', 'backup', 'settings'];
 
 function getViewFromLocation(): ActiveView {
   if (typeof window === 'undefined') return 'dashboard';
@@ -77,6 +81,7 @@ export default function App() {
 
 function AdminApp() {
   const { message } = AntdApp.useApp();
+  const previousViewRef = useRef<ActiveView | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -92,6 +97,13 @@ function AdminApp() {
   const [setupPassword, setSetupPassword] = useState('');
   const [setupConfirmPassword, setSetupConfirmPassword] = useState('');
   const [defaultStrmTargetPath, setDefaultStrmTargetPath] = useState('/media/strm');
+  const [appConfig, setAppConfig] = useState<AppConfig>({
+    ...defaultAppConfigForm,
+    runtimePort: defaultAppConfigForm.port,
+    databasePath: '',
+    nodeEnv: '',
+    resetAdminPasswordEnabled: false,
+  });
 
   const [loginLoading, setLoginLoading] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
@@ -102,8 +114,11 @@ function AdminApp() {
   const [submittingService, setSubmittingService] = useState(false);
   const [submittingTask, setSubmittingTask] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
   const [latestLogModalOpen, setLatestLogModalOpen] = useState(false);
   const [logLoading, setLogLoading] = useState(false);
+  const [bulkDeletingRuns, setBulkDeletingRuns] = useState(false);
+  const [deletingRunIds, setDeletingRunIds] = useState<string[]>([]);
 
   const [editingService, setEditingService] = useState<OpenlistService | null>(null);
   const [editingTask, setEditingTask] = useState<SyncTask | null>(null);
@@ -148,6 +163,51 @@ function AdminApp() {
         message.error(formatError(error, '加载详细日志失败。'));
       });
   }, [activeView, message, selectedRun?.id, selectedRunId, user]);
+
+  useEffect(() => {
+    if (!user) {
+      previousViewRef.current = null;
+      return;
+    }
+
+    const previousView = previousViewRef.current;
+    previousViewRef.current = activeView;
+
+    if (!previousView || previousView === activeView) {
+      return;
+    }
+
+    const refreshCurrentView = async () => {
+      try {
+        switch (activeView) {
+          case 'dashboard':
+            await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
+            break;
+          case 'services':
+            await Promise.all([refreshServices(), refreshTasks()]);
+            break;
+          case 'tasks':
+            await Promise.all([refreshServices(), refreshTasks()]);
+            break;
+          case 'runs':
+            await Promise.all([refreshServices(), refreshRunsAndTasks()]);
+            break;
+          case 'backup':
+            await Promise.all([refreshConfig(), refreshServices(), refreshTasks()]);
+            break;
+          case 'settings':
+            await refreshConfig();
+            break;
+          default:
+            break;
+        }
+      } catch (error) {
+        console.error(`Failed to refresh data for view ${activeView}:`, error);
+      }
+    };
+
+    refreshCurrentView();
+  }, [activeView, user]);
 
   useEffect(() => {
     if (!user || (!hasRunningRuns && selectedRun?.status !== 'running')) return;
@@ -256,6 +316,7 @@ function AdminApp() {
 
   async function refreshConfig() {
     const config = await getAppConfig();
+    setAppConfig(config);
     setDefaultStrmTargetPath(config.defaultStrmTargetPath || '/media/strm');
     return config;
   }
@@ -283,6 +344,24 @@ function AdminApp() {
     setRuns(nextRuns);
     setTasks(nextTasks);
     return nextRuns;
+  }
+
+  function clearDeletedRuns(runIds: string[]) {
+    if (!runIds.length) return;
+
+    setRuns((currentRuns) => currentRuns.filter((run) => !runIds.includes(run.id)));
+
+    if (selectedRun && runIds.includes(selectedRun.id)) {
+      setSelectedRun(null);
+      setSelectedRunId('');
+      if (activeView === 'runDetail') {
+        changeView('runs');
+      }
+    }
+
+    if (latestRunLog && runIds.includes(latestRunLog.id)) {
+      setLatestRunLog(null);
+    }
   }
 
   function handleAuthSuccess(result: AuthResponse) {
@@ -381,7 +460,7 @@ function AdminApp() {
     try {
       setRestoring(true);
       const result = await restoreBackup(file);
-      await Promise.all([refreshServices(), refreshTasks(), refreshRuns()]);
+      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
       setEditingService(null);
       setEditingTask(null);
       setServiceDrawerOpen(false);
@@ -392,6 +471,25 @@ function AdminApp() {
       throw error;
     } finally {
       setRestoring(false);
+    }
+  }
+
+  async function handleAppConfigSubmit(values: typeof defaultAppConfigForm) {
+    setSavingConfig(true);
+    try {
+      const result = await updateAppConfig(values);
+      setAppConfig(result);
+      setDefaultStrmTargetPath(result.defaultStrmTargetPath || '/media/strm');
+      if (result.runtimePort !== result.port) {
+        message.success('系统配置已保存。PORT 修改将在重启应用后生效。');
+      } else {
+        message.success('系统配置已保存。');
+      }
+    } catch (error) {
+      message.error(formatError(error, '保存系统配置失败。'));
+      throw error;
+    } finally {
+      setSavingConfig(false);
     }
   }
 
@@ -607,6 +705,39 @@ function AdminApp() {
     }
   }
 
+  async function handleDeleteRun(run: TaskRun) {
+    setDeletingRunIds((current) => Array.from(new Set([...current, run.id])));
+    try {
+      await deleteRun(run.id);
+      clearDeletedRuns([run.id]);
+      message.success(`运行记录 ${run.taskName} 已删除。`);
+    } catch (error) {
+      message.error(formatError(error, '删除运行记录失败。'));
+    } finally {
+      setDeletingRunIds((current) => current.filter((id) => id !== run.id));
+    }
+  }
+
+  async function handleBulkDeleteRuns(ids: string[]) {
+    if (!ids.length) {
+      message.warning('请先勾选需要删除的运行记录。');
+      return;
+    }
+
+    setBulkDeletingRuns(true);
+    setDeletingRunIds((current) => Array.from(new Set([...current, ...ids])));
+    try {
+      const result = await bulkDeleteRuns(ids);
+      clearDeletedRuns(ids);
+      message.success(`已删除 ${result.deletedCount} 条运行记录。`);
+    } catch (error) {
+      message.error(formatError(error, '批量删除运行记录失败。'));
+    } finally {
+      setBulkDeletingRuns(false);
+      setDeletingRunIds((current) => current.filter((id) => !ids.includes(id)));
+    }
+  }
+
   if (loading) {
     return <LoginPage loadingOnly />;
   }
@@ -692,6 +823,8 @@ function AdminApp() {
         serviceFilter={runServiceFilter}
         taskFilter={runTaskFilter}
         selectedRun={selectedRun}
+        deletingRunIds={deletingRunIds}
+        bulkDeleting={bulkDeletingRuns}
         onServiceFilterChange={(value) => {
           setRunServiceFilter(value);
           setRunTaskFilter('all');
@@ -699,6 +832,8 @@ function AdminApp() {
         onTaskFilterChange={setRunTaskFilter}
         onRefresh={refreshRunsAndTasks}
         onViewRunDetail={openRunDetail}
+        onDeleteRun={handleDeleteRun}
+        onBulkDeleteRuns={handleBulkDeleteRuns}
       />
     );
   } else if (activeView === 'runDetail') {
@@ -707,6 +842,14 @@ function AdminApp() {
         run={selectedRun}
         onBack={() => changeView('runs')}
         onRefresh={refreshRunsAndTasks}
+      />
+    );
+  } else if (activeView === 'settings') {
+    pageContent = (
+      <SettingsPage
+        config={appConfig}
+        submitting={savingConfig}
+        onSubmit={handleAppConfigSubmit}
       />
     );
   } else {

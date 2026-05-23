@@ -1,6 +1,7 @@
 import {
   AuthResponse,
   AppConfig,
+  AppConfigFormValues,
   BackupPayload,
   OpenlistService,
   OpenlistServiceFormValues,
@@ -105,6 +106,14 @@ export function getAppConfig() {
   return requestJson<AppConfig>('/api/config');
 }
 
+export function updateAppConfig(values: AppConfigFormValues) {
+  return requestJson<AppConfig>('/api/config', {
+    method: 'PUT',
+    headers: buildHeaders(undefined, true),
+    body: JSON.stringify(values),
+  });
+}
+
 export function logout() {
   return requestJson<void>('/api/auth/logout', {
     method: 'POST',
@@ -185,6 +194,20 @@ export function triggerTaskRun(id: string) {
 
 export function getRuns() {
   return requestJson<TaskRun[]>('/api/runs');
+}
+
+export function deleteRun(id: string) {
+  return requestJson<void>(`/api/runs/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function bulkDeleteRuns(ids: string[]) {
+  return requestJson<{ deletedCount: number }>('/api/runs/bulk-delete', {
+    method: 'POST',
+    headers: buildHeaders(undefined, true),
+    body: JSON.stringify({ ids }),
+  });
 }
 
 export function getRun(id: string) {

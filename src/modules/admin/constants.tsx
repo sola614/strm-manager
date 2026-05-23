@@ -4,11 +4,13 @@ import {
   FileSyncOutlined,
   InboxOutlined,
   ReloadOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import type { ReactNode } from 'react';
-import { ActiveView, OpenlistServiceFormValues, SyncTaskFormValues } from '../../types';
+import { ActiveView, AppConfigFormValues, OpenlistServiceFormValues, SyncTaskFormValues } from '../../types';
+import packageInfo from '../../../package.json';
 
-export const ADMIN_VERSION = 'v1.0.0';
+export const ADMIN_VERSION = `v${packageInfo.version}`;
 
 export const defaultServiceForm: OpenlistServiceFormValues = {
   name: '',
@@ -33,6 +35,13 @@ export const defaultTaskForm: SyncTaskFormValues = {
   enabled: true,
   notifyEnabled: false,
   callbackUrl: '',
+};
+
+export const defaultAppConfigForm: AppConfigFormValues = {
+  port: 4173,
+  defaultStrmTargetPath: '/media/strm',
+  logCleanupEnabled: true,
+  logRetentionDays: 7,
 };
 
 export const viewMeta: Record<
@@ -79,5 +88,11 @@ export const viewMeta: Record<
     description: '导出当前配置备份，或上传备份文件恢复服务与任务。',
     menuLabel: '备份管理',
     icon: <InboxOutlined />,
+  },
+  settings: {
+    title: '系统配置',
+    description: '维护默认输出目录、服务端口与运行日志清理策略。',
+    menuLabel: '系统配置',
+    icon: <SettingOutlined />,
   },
 };

@@ -1,7 +1,8 @@
-import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Card, Select, Space, Table, Tag } from 'antd';
+import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Card, Popconfirm, Select, Space, Table, Tag } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
-import { useState } from 'react';
+import type { Key } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { OpenlistService, SyncTask, TaskRun } from '../../../types';
 import { formatDateTime, getServiceDisplayName, getStoredPageSize, setStoredPageSize, statusColor } from '../utils';
 
@@ -12,25 +13,48 @@ interface RunsPageProps {
   serviceFilter: string;
   taskFilter: string;
   selectedRun: TaskRun | null;
+  deletingRunIds: string[];
+  bulkDeleting: boolean;
   onServiceFilterChange: (value: string) => void;
   onTaskFilterChange: (value: string) => void;
   onRefresh: () => void;
   onViewRunDetail: (run: TaskRun | null) => void;
+  onDeleteRun: (run: TaskRun) => void;
+  onBulkDeleteRuns: (ids: string[]) => void;
 }
 
 export function RunsPage(props: RunsPageProps) {
   const [pageSize, setPageSize] = useState(() => getStoredPageSize('runs'));
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
 
-  const filteredRuns = props.runs.filter((run) => {
-    const matchService = props.serviceFilter === 'all' || run.serviceId === props.serviceFilter;
-    const matchTask = props.taskFilter === 'all' || run.taskId === props.taskFilter;
-    return matchService && matchTask;
-  });
+  const filteredRuns = useMemo(
+    () =>
+      props.runs.filter((run) => {
+        const matchService = props.serviceFilter === 'all' || run.serviceId === props.serviceFilter;
+        const matchTask = props.taskFilter === 'all' || run.taskId === props.taskFilter;
+        return matchService && matchTask;
+      }),
+    [props.runs, props.serviceFilter, props.taskFilter],
+  );
 
-  const visibleTasks =
-    props.serviceFilter === 'all'
-      ? props.tasks
-      : props.tasks.filter((task) => task.serviceId === props.serviceFilter);
+  const visibleTasks = useMemo(
+    () =>
+      props.serviceFilter === 'all'
+        ? props.tasks
+        : props.tasks.filter((task) => task.serviceId === props.serviceFilter),
+    [props.serviceFilter, props.tasks],
+  );
+
+  useEffect(() => {
+    const visibleRunIds = new Set(filteredRuns.map((run) => run.id));
+    setSelectedRowKeys((current) => {
+      const next = current.filter((key) => visibleRunIds.has(String(key)));
+      if (next.length === current.length && next.every((key, index) => key === current[index])) {
+        return current;
+      }
+      return next;
+    });
+  }, [filteredRuns]);
 
   const columns: ColumnsType<TaskRun> = [
     {
@@ -93,6 +117,30 @@ export function RunsPage(props: RunsPageProps) {
       key: 'message',
       ellipsis: true,
     },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 120,
+      render: (_value: unknown, record: TaskRun) => (
+        <Popconfirm
+          title="删除运行记录"
+          description={record.status === 'running' ? '运行中的记录暂不支持删除。' : '删除后将无法恢复该条运行日志。'}
+          onConfirm={() => props.onDeleteRun(record)}
+          okButtonProps={{ danger: true }}
+          disabled={record.status === 'running'}
+        >
+          <Button
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            loading={props.deletingRunIds.includes(record.id)}
+            disabled={record.status === 'running'}
+          >
+            删除
+          </Button>
+        </Popconfirm>
+      ),
+    },
   ];
 
   const pagination: TablePaginationConfig = {
@@ -103,6 +151,14 @@ export function RunsPage(props: RunsPageProps) {
       setPageSize(size);
       setStoredPageSize('runs', size);
     },
+  };
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys: Key[]) => setSelectedRowKeys(keys),
+    getCheckboxProps: (record: TaskRun) => ({
+      disabled: record.status === 'running',
+    }),
   };
 
   return (
@@ -139,6 +195,22 @@ export function RunsPage(props: RunsPageProps) {
             <Button icon={<ReloadOutlined />} onClick={props.onRefresh}>
               刷新
             </Button>
+            <Popconfirm
+              title="批量删除运行记录"
+              description="删除后不可恢复，确认删除当前勾选的运行记录吗？"
+              onConfirm={() => props.onBulkDeleteRuns(selectedRowKeys.map(String))}
+              okButtonProps={{ danger: true }}
+              disabled={!selectedRowKeys.length}
+            >
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                loading={props.bulkDeleting}
+                disabled={!selectedRowKeys.length}
+              >
+                批量删除
+              </Button>
+            </Popconfirm>
           </Space>
         }
       >
@@ -147,6 +219,7 @@ export function RunsPage(props: RunsPageProps) {
           columns={columns}
           dataSource={filteredRuns}
           pagination={pagination}
+          rowSelection={rowSelection}
           rowClassName={(record) => (record.id === props.selectedRun?.id ? 'ant-table-row-selected' : '')}
         />
       </Card>

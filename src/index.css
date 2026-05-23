@@ -130,7 +130,7 @@ button {
 
 .run-detail-log-list {
   width: 100%;
-  max-height: calc(100vh - 430px);
+  max-height: calc(100vh - 558px);
   min-height: 220px;
   overflow: auto;
   padding: 18px 24px;

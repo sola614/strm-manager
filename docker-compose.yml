@@ -1,6 +1,6 @@
 services:
   strm-manager:
-    # 已发布镜像；更新版本时执行 docker compose pull && docker compose up -d
+    # 执行 docker compose pull && docker compose up -d
     image: ghcr.io/sola614/strm-manager:latest
 
     # 左侧为宿主机端口，右侧为容器内服务端口；如果修改 PORT，也要同步修改右侧端口。

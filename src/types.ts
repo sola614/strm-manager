@@ -87,10 +87,24 @@ export interface SessionUser {
 }
 
 export interface AppConfig {
+  port: number;
+  runtimePort: number;
   defaultStrmTargetPath: string;
+  logCleanupEnabled: boolean;
+  logRetentionDays: number;
+  databasePath: string;
+  nodeEnv: string;
+  resetAdminPasswordEnabled: boolean;
 }
 
-export type ActiveView = 'dashboard' | 'services' | 'tasks' | 'runs' | 'runDetail' | 'backup';
+export interface AppConfigFormValues {
+  port: number;
+  defaultStrmTargetPath: string;
+  logCleanupEnabled: boolean;
+  logRetentionDays: number;
+}
+
+export type ActiveView = 'dashboard' | 'services' | 'tasks' | 'runs' | 'runDetail' | 'backup' | 'settings';
 
 export interface BackupPayload {
   version: string;
