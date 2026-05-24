@@ -104,7 +104,40 @@ export interface AppConfigFormValues {
   logRetentionDays: number;
 }
 
-export type ActiveView = 'dashboard' | 'services' | 'tasks' | 'runs' | 'runDetail' | 'backup' | 'settings';
+export type ActiveView = 'dashboard' | 'services' | 'tasks' | 'files' | 'runs' | 'runDetail' | 'backup' | 'settings';
+
+export interface ManagedFileRoot {
+  id: string;
+  targetPath: string;
+  configuredPaths: string[];
+  resolvedPath: string;
+  taskIds: string[];
+  taskNames: string[];
+  exists: boolean;
+  error: string;
+}
+
+export type ManagedFileEntryType = 'directory' | 'file';
+
+export interface ManagedFileEntry {
+  id: string;
+  rootId: string;
+  targetPath: string;
+  resolvedRootPath: string;
+  relativePath: string;
+  name: string;
+  type: ManagedFileEntryType;
+  size: number;
+  updatedAt: string | null;
+}
+
+export interface ManagedFilesPayload {
+  roots: ManagedFileRoot[];
+  currentRootId: string | null;
+  currentDirectory: string;
+  parentDirectory: string | null;
+  entries: ManagedFileEntry[];
+}
 
 export interface BackupPayload {
   version: string;

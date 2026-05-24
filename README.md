@@ -1,6 +1,17 @@
 # strm-manager
 
-基于 `React + Node.js + SQLite` 的 STRM 任务管理后台，用来管理 OpenList 服务、定时任务、运行记录，以及配置备份恢复。
+`strm-manager` 是一个基于 OpenList 服务生成 STRM 文件的管理后台。它通过 OpenList 提供的 WebDAV 获取网盘视频播放链接，并生成可被 Jellyfin、Emby 等影音媒体服务器识别的 `.strm` 文件，实现云盘视频直接播放。
+
+适用场景：
+
+- 管理多个 OpenList 服务连接
+- 通过 WebDAV 获取网盘视频播放链接并生成 `.strm` 文件
+- 定义和执行 STRM 生成任务
+- 通过 Cron 定时扫描并生成 `.strm` 文件
+- 查看运行结果、日志详情和任务状态
+- 导出/导入配置备份，快速恢复环境
+
+技术栈：`React + Vite` 前端，`Express + SQLite` 后端
 
 ## 功能
 
@@ -18,51 +29,10 @@
 - Node.js 24
 - npm 11+
 
-项目依赖 Vite 8，最低 Node 版本要求为 `>=20.19`。由于 `better-sqlite3` 是原生模块，Windows 本机安装最新依赖时可能需要 Python 和 Visual Studio C++ Build Tools。Docker 构建环境已经内置所需编译工具。
+项目依赖 Vite 8，最低 Node 版本要求为 `>=20.19`。由于 `better-sqlite3` 是原生模块，Windows 本机安装最新依赖时可能需要 Python 和 Visual Studio C++ Build Tools。Docker 构建环境已经内置所需编译工具，推荐使用。
 
-## 本地开发
-
-安装依赖：
-
-```bash
-npm install
-```
-
-同时启动前后端：
-
-```bash
-npm run dev
-```
-
-只启动前端：
-
-```bash
-npm run dev:client
-```
-
-只启动后端：
-
-```bash
-npm run dev:server
-```
-
-生产构建与启动：
-
-```bash
-npm run build
-npm run start
-```
-
-默认访问地址：
-
-```text
-http://localhost:4173
-```
-
-## Docker
-
-使用已发布镜像运行：
-
+## 部署方式
+### Docker部署
 ```bash
 docker run -d \
   --name strm-manager \
@@ -109,6 +79,12 @@ volumes:
 /media/strm
 ```
 
+### nodejs部署
+```bash
+npm run build
+npm run start
+```
+
 ## 管理员登录
 
 - 用户名：`admin`
@@ -134,77 +110,44 @@ docker compose up -d
 
 重启后进入登录页，系统会直接展示管理员密码设置表单。设置完成后，请删除 `RESET_ADMIN_PASSWORD` 并再次重启容器，避免每次启动都进入重置流程。
 
-## OpenList 服务配置
+## 本地开发
 
-每个 OpenList 服务包含：
+安装依赖：
 
-- `name`
-- `url`
-- `token`
-- `baseUrl`
+```bash
+npm install
+```
 
-说明：
+同时启动前后端：
 
-- `name`：服务显示名称，可留空；留空时界面会使用 `url` 展示
-- `url`：OpenList 服务地址
-- `token`：OpenList API Token
-- `baseUrl`：播放链接与源目录拼接时使用的前缀，默认 `/`
+```bash
+npm run dev
+```
 
-- `url` 不能重复配置。
+只启动前端：
 
-## 定时任务配置
+```bash
+npm run dev:client
+```
 
-每个定时任务包含：
+只启动后端：
 
-- `name`
-- `serviceId`
-- `sourcePath`
-- `targetPath`
-- `scheduleEnabled`
-- `cron`
-- `maxConcurrency`
-- `downloadExtensions`
-- `downloadSubtitles`
-- `requestDelaySeconds`
-- `overwriteExisting`
-- `notifyEnabled`
-- `callbackUrl`
+```bash
+npm run dev:server
+```
 
-说明：
+生产构建与启动：
 
-- `sourcePath`：相对服务 `baseUrl` 的视频源目录或单文件路径
-- `targetPath`：本地 STRM 文件存放目录；Docker 部署时请填写容器内已映射目录
-- `scheduleEnabled`：是否配置定时任务；关闭后仅支持手动执行
-- `cron`：开启定时任务后生效，支持每小时、每天、每周、每月和自定义 Cron
-- `overwriteExisting`：关闭时使用原子写入，目标文件已存在会跳过
-- `callbackUrl`：通知开启后必填；任务有生成文件或下载字幕时自动回调
+```bash
+npm run build
+npm run start
+```
 
-同一个 `serviceId + sourcePath + targetPath` 不能重复配置。
+默认访问地址：
 
-任务执行时会边扫描边写入目标目录：扫描到视频文件会立即生成对应 `.strm`，扫描到字幕文件会立即下载到目标目录。即使任务中途失败，已经处理完成的文件也会保留。
-
-## 运行日志
-
-任务列表中的“日志”会展示最近一次运行摘要。运行记录页面中点击任务名称会进入独立日志详情页，地址会携带运行记录 ID，刷新页面后仍会恢复当前日志详情。
-
-任务运行中，日志详情页会自动刷新处理进度和详细日志。
-
-## 备份恢复
-
-后台提供“备份管理”页面，支持：
-
-- 导出当前服务与任务配置为 JSON
-- 上传 JSON 备份文件恢复配置
-
-恢复是覆盖式恢复，会清空当前服务、任务和运行记录后再重建。
-
-## 项目结构
-
-- `server.js`：后端 API、认证、调度和任务执行器
-- `src/modules/admin`：后台页面、表单和组件
-- `src/lib/api.ts`：前端 API 客户端
-- `src/lib/cron.ts`：Cron 表达式解析工具
-- `example/alist2strm.js`：执行逻辑参考实现
+```text
+http://localhost:4173
+```
 
 ## 文档
 

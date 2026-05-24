@@ -1,11 +1,11 @@
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ExportOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Button, Card, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useState } from 'react';
-import { OpenlistService, SyncTask } from '../../../types';
+import type { OpenlistService, SyncTask } from '../../../types';
 import { formatDateTime, getServiceDisplayName, getStoredPageSize, setStoredPageSize } from '../utils';
 
-const { Text } = Typography;
+const { Link, Text } = Typography;
 
 interface ServicesPageProps {
   services: OpenlistService[];
@@ -54,6 +54,14 @@ export function ServicesPage(props: ServicesPageProps) {
       title: 'URL',
       dataIndex: 'url',
       key: 'url',
+      render: (value: string) => (
+        <Link href={value} target="_blank" rel="noreferrer">
+          <Space size={6}>
+            <span>{value}</span>
+            <ExportOutlined />
+          </Space>
+        </Link>
+      ),
     },
     {
       title: 'Base URL',

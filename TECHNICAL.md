@@ -279,12 +279,6 @@ Dockerfile 使用多阶段构建：
 
 如果任务要写入宿主机媒体目录，需要额外挂载目录，并在任务中使用容器内路径。
 
-## 已知问题
-
-- 打包后主包较大，Vite 会提示 chunk size warning
-- `server.js` 仍是单文件，继续演进会越来越难维护
-- Windows PowerShell 可能因执行策略拦截 `npm.ps1`，可使用 `npm.cmd`
-
 ## 迭代建议
 
 结构层面：

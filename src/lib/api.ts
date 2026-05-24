@@ -3,6 +3,7 @@ import {
   AppConfig,
   AppConfigFormValues,
   BackupPayload,
+  ManagedFilesPayload,
   OpenlistService,
   OpenlistServiceFormValues,
   SessionUser,
@@ -160,6 +161,33 @@ export function getTasks(serviceId?: string) {
     endpoint.searchParams.set('serviceId', serviceId);
   }
   return requestJson<SyncTask[]>(endpoint);
+}
+
+export function getManagedFiles(rootId?: string, directory?: string) {
+  const endpoint = new URL('/api/files', window.location.origin);
+  if (rootId) {
+    endpoint.searchParams.set('rootId', rootId);
+  }
+  if (directory) {
+    endpoint.searchParams.set('directory', directory);
+  }
+  return requestJson<ManagedFilesPayload>(endpoint);
+}
+
+export function deleteManagedFile(rootId: string, relativePath: string) {
+  return requestJson<void>('/api/files', {
+    method: 'DELETE',
+    headers: buildHeaders(undefined, true),
+    body: JSON.stringify({ rootId, relativePath }),
+  });
+}
+
+export function bulkDeleteManagedFiles(rootId: string, relativePaths: string[]) {
+  return requestJson<{ deletedCount: number }>('/api/files/bulk-delete', {
+    method: 'POST',
+    headers: buildHeaders(undefined, true),
+    body: JSON.stringify({ rootId, relativePaths }),
+  });
 }
 
 export function createTask(values: SyncTaskFormValues) {

@@ -3,15 +3,18 @@ import zhCN from 'antd/locale/zh_CN';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   bulkDeleteRuns,
+  bulkDeleteManagedFiles,
   changePassword,
   createService,
   createTask,
+  deleteManagedFile,
   deleteRun,
   deleteService,
   deleteTask,
   exportBackup,
   getAppConfig,
   getCurrentUser,
+  getManagedFiles,
   getRun,
   getRuns,
   getServices,
@@ -29,23 +32,34 @@ import {
   updateService,
   updateTask,
 } from './lib/api';
+import { ADMIN_VERSION, defaultAppConfigForm, defaultServiceForm, defaultTaskForm, viewMeta } from './modules/admin/constants';
 import { PasswordModal } from './modules/admin/forms/PasswordModal';
 import { ServiceDrawer } from './modules/admin/forms/ServiceDrawer';
 import { TaskDrawer } from './modules/admin/forms/TaskDrawer';
-import { ADMIN_VERSION, defaultAppConfigForm, defaultServiceForm, defaultTaskForm, viewMeta } from './modules/admin/constants';
 import { AdminShell } from './modules/admin/layout/AdminShell';
-import { DashboardPage } from './modules/admin/pages/DashboardPage';
 import { BackupPage } from './modules/admin/pages/BackupPage';
+import { DashboardPage } from './modules/admin/pages/DashboardPage';
+import { FilesPage } from './modules/admin/pages/FilesPage';
 import { LoginPage } from './modules/admin/pages/LoginPage';
 import { RunDetailPage } from './modules/admin/pages/RunDetailPage';
 import { RunsPage } from './modules/admin/pages/RunsPage';
-import { SettingsPage } from './modules/admin/pages/SettingsPage';
 import { ServicesPage } from './modules/admin/pages/ServicesPage';
+import { SettingsPage } from './modules/admin/pages/SettingsPage';
 import { TasksPage } from './modules/admin/pages/TasksPage';
 import { getServiceDisplayName } from './modules/admin/utils';
-import { ActiveView, AppConfig, AuthResponse, OpenlistService, SessionUser, SyncTask, TaskRun } from './types';
+import type {
+  ActiveView,
+  AppConfig,
+  AuthResponse,
+  ManagedFileEntry,
+  ManagedFileRoot,
+  OpenlistService,
+  SessionUser,
+  SyncTask,
+  TaskRun,
+} from './types';
 
-const validViews: ActiveView[] = ['dashboard', 'services', 'tasks', 'runs', 'runDetail', 'backup', 'settings'];
+const validViews: ActiveView[] = ['dashboard', 'services', 'tasks', 'files', 'runs', 'runDetail', 'backup', 'settings'];
 
 function getViewFromLocation(): ActiveView {
   if (typeof window === 'undefined') return 'dashboard';
@@ -88,8 +102,14 @@ function AdminApp() {
   const [services, setServices] = useState<OpenlistService[]>([]);
   const [tasks, setTasks] = useState<SyncTask[]>([]);
   const [runs, setRuns] = useState<TaskRun[]>([]);
+  const [managedFileRoots, setManagedFileRoots] = useState<ManagedFileRoot[]>([]);
+  const [managedFileEntries, setManagedFileEntries] = useState<ManagedFileEntry[]>([]);
+
   const [activeView, setActiveView] = useState<ActiveView>(() => getViewFromLocation());
   const [serviceFilter, setServiceFilter] = useState<string>('all');
+  const [fileRootFilter, setFileRootFilter] = useState<string>('');
+  const [fileCurrentDirectory, setFileCurrentDirectory] = useState<string>('');
+  const [fileParentDirectory, setFileParentDirectory] = useState<string | null>(null);
   const [runServiceFilter, setRunServiceFilter] = useState<string>('all');
   const [runTaskFilter, setRunTaskFilter] = useState<string>('all');
   const [loginPassword, setLoginPassword] = useState('');
@@ -117,7 +137,10 @@ function AdminApp() {
   const [savingConfig, setSavingConfig] = useState(false);
   const [latestLogModalOpen, setLatestLogModalOpen] = useState(false);
   const [logLoading, setLogLoading] = useState(false);
+  const [managedFilesLoading, setManagedFilesLoading] = useState(false);
+  const [bulkDeletingFiles, setBulkDeletingFiles] = useState(false);
   const [bulkDeletingRuns, setBulkDeletingRuns] = useState(false);
+  const [deletingManagedFileIds, setDeletingManagedFileIds] = useState<string[]>([]);
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([]);
 
   const [editingService, setEditingService] = useState<OpenlistService | null>(null);
@@ -143,6 +166,7 @@ function AdminApp() {
       setActiveView(getViewFromLocation());
       setSelectedRunId(getRunIdFromLocation());
     };
+
     window.addEventListener('hashchange', handleHashChange);
     handleHashChange();
     return () => window.removeEventListener('hashchange', handleHashChange);
@@ -181,13 +205,16 @@ function AdminApp() {
       try {
         switch (activeView) {
           case 'dashboard':
-            await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
+            await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
             break;
           case 'services':
             await Promise.all([refreshServices(), refreshTasks()]);
             break;
           case 'tasks':
             await Promise.all([refreshServices(), refreshTasks()]);
+            break;
+          case 'files':
+            await Promise.all([refreshTasks(), refreshManagedFiles()]);
             break;
           case 'runs':
             await Promise.all([refreshServices(), refreshRunsAndTasks()]);
@@ -275,7 +302,7 @@ function AdminApp() {
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
-      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
+      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
     } catch (error) {
       setStoredToken(null);
       setUser(null);
@@ -305,6 +332,7 @@ function AdminApp() {
       setRunServiceFilter(run.serviceId);
       setRunTaskFilter(run.taskId);
     }
+
     setLatestLogModalOpen(false);
     const nextHash = run ? `#/runDetail?id=${encodeURIComponent(run.id)}` : '#/runDetail';
     if (window.location.hash !== nextHash) {
@@ -337,6 +365,22 @@ function AdminApp() {
     const items = await getRuns();
     setRuns(items);
     return items;
+  }
+
+  async function refreshManagedFiles(nextRootId = fileRootFilter, nextDirectory = fileCurrentDirectory) {
+    setManagedFilesLoading(true);
+    try {
+      const payload = await getManagedFiles(nextRootId, nextDirectory);
+      setManagedFileRoots(payload.roots);
+      setManagedFileEntries(payload.entries);
+      setFileRootFilter(payload.currentRootId || '');
+      setFileCurrentDirectory(payload.currentDirectory || '');
+      setFileParentDirectory(payload.parentDirectory);
+
+      return payload;
+    } finally {
+      setManagedFilesLoading(false);
+    }
   }
 
   async function refreshRunsAndTasks() {
@@ -387,11 +431,11 @@ function AdminApp() {
         setSetupRequired(true);
         setStoredToken(null);
         setUser(null);
-        message.success('请设置新的管理员密码。');
+        message.success('请先设置新的管理员密码。');
         return;
       }
 
-      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
+      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
       message.success('登录成功。');
     } catch (error) {
       message.error(formatError(error, '登录失败。'));
@@ -412,7 +456,12 @@ function AdminApp() {
     setServices([]);
     setTasks([]);
     setRuns([]);
+    setManagedFileRoots([]);
+    setManagedFileEntries([]);
     setServiceFilter('all');
+    setFileRootFilter('');
+    setFileCurrentDirectory('');
+    setFileParentDirectory(null);
     setRunServiceFilter('all');
     setRunTaskFilter('all');
     changeView('dashboard');
@@ -425,7 +474,7 @@ function AdminApp() {
       const result = await changePassword(newPassword);
       handleAuthSuccess(result);
       setPasswordOpen(false);
-      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
+      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
       message.success('密码修改成功。');
     } catch (error) {
       message.error(formatError(error, '密码修改失败。'));
@@ -460,7 +509,7 @@ function AdminApp() {
     try {
       setRestoring(true);
       const result = await restoreBackup(file);
-      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
+      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
       setEditingService(null);
       setEditingTask(null);
       setServiceDrawerOpen(false);
@@ -481,7 +530,7 @@ function AdminApp() {
       setAppConfig(result);
       setDefaultStrmTargetPath(result.defaultStrmTargetPath || '/media/strm');
       if (result.runtimePort !== result.port) {
-        message.success('系统配置已保存。PORT 修改将在重启应用后生效。');
+        message.success('系统配置已保存，PORT 修改将在重启应用后生效。');
       } else {
         message.success('系统配置已保存。');
       }
@@ -531,7 +580,7 @@ function AdminApp() {
         message.success('OpenList 服务已创建。');
       }
 
-      await Promise.all([refreshServices(), refreshTasks(), refreshRuns()]);
+      await Promise.all([refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
       setServiceDrawerOpen(false);
       setEditingService(null);
     } catch (error) {
@@ -545,7 +594,7 @@ function AdminApp() {
   async function removeService(service: OpenlistService) {
     try {
       await deleteService(service.id);
-      await refreshServices();
+      await Promise.all([refreshServices(), refreshManagedFiles()]);
       message.success(`服务 ${getServiceDisplayName(service)} 已删除。`);
     } catch (error) {
       message.error(formatError(error, '删除 OpenList 服务失败。'));
@@ -569,7 +618,7 @@ function AdminApp() {
       const result = await setupInitialPassword(nextPassword);
       setSetupRequired(false);
       handleAuthSuccess(result);
-      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns()]);
+      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
       message.success('管理员密码设置成功。');
     } catch (error) {
       message.error(formatError(error, '设置管理员密码失败。'));
@@ -647,7 +696,7 @@ function AdminApp() {
         message.success('定时任务已创建。');
       }
 
-      await refreshTasks();
+      await Promise.all([refreshTasks(), refreshManagedFiles()]);
       setTaskDrawerOpen(false);
       setEditingTask(null);
     } catch (error) {
@@ -661,7 +710,7 @@ function AdminApp() {
   async function removeTask(task: SyncTask) {
     try {
       await deleteTask(task.id);
-      await Promise.all([refreshTasks(), refreshRuns()]);
+      await Promise.all([refreshTasks(), refreshRuns(), refreshManagedFiles()]);
       message.success(`任务 ${task.name} 已删除。`);
     } catch (error) {
       message.error(formatError(error, '删除定时任务失败。'));
@@ -702,6 +751,53 @@ function AdminApp() {
       message.success(`任务 ${task.name} 已开始执行。`);
     } catch (error) {
       message.error(formatError(error, '任务触发失败。'));
+    }
+  }
+
+  function openManagedDirectory(relativePath: string) {
+    void refreshManagedFiles(fileRootFilter, relativePath);
+  }
+
+  function openManagedParentDirectory() {
+    if (!fileParentDirectory && fileParentDirectory !== '') return;
+    void refreshManagedFiles(fileRootFilter, fileParentDirectory || '');
+  }
+
+  async function handleDeleteManagedFile(entry: ManagedFileEntry) {
+    if (!fileRootFilter) return;
+
+    setDeletingManagedFileIds((current) => Array.from(new Set([...current, entry.id])));
+    try {
+      await deleteManagedFile(fileRootFilter, entry.relativePath);
+      await refreshManagedFiles(fileRootFilter, fileCurrentDirectory);
+      message.success(`${entry.type === 'directory' ? '文件夹' : '文件'} ${entry.name} 已删除。`);
+    } catch (error) {
+      message.error(formatError(error, '删除文件失败。'));
+    } finally {
+      setDeletingManagedFileIds((current) => current.filter((id) => id !== entry.id));
+    }
+  }
+
+  async function handleBulkDeleteManagedFiles(entries: ManagedFileEntry[]) {
+    if (!fileRootFilter || !entries.length) {
+      message.warning('请先勾选需要删除的文件或文件夹。');
+      return;
+    }
+
+    setBulkDeletingFiles(true);
+    setDeletingManagedFileIds((current) => Array.from(new Set([...current, ...entries.map((entry) => entry.id)])));
+    try {
+      const result = await bulkDeleteManagedFiles(
+        fileRootFilter,
+        entries.map((entry) => entry.relativePath),
+      );
+      await refreshManagedFiles(fileRootFilter, fileCurrentDirectory);
+      message.success(`已删除 ${result.deletedCount} 项。`);
+    } catch (error) {
+      message.error(formatError(error, '批量删除文件失败。'));
+    } finally {
+      setBulkDeletingFiles(false);
+      setDeletingManagedFileIds((current) => current.filter((id) => !entries.some((entry) => entry.id === id)));
     }
   }
 
@@ -814,6 +910,27 @@ function AdminApp() {
         onRefresh={refreshTasks}
       />
     );
+  } else if (activeView === 'files') {
+    pageContent = (
+      <FilesPage
+        roots={managedFileRoots}
+        entries={managedFileEntries}
+        rootFilter={fileRootFilter}
+        currentDirectory={fileCurrentDirectory}
+        parentDirectory={fileParentDirectory}
+        loading={managedFilesLoading}
+        deletingIds={deletingManagedFileIds}
+        bulkDeleting={bulkDeletingFiles}
+        onFilterChange={(value) => {
+          void refreshManagedFiles(value, '');
+        }}
+        onOpenDirectory={openManagedDirectory}
+        onGoParent={openManagedParentDirectory}
+        onDeleteEntry={handleDeleteManagedFile}
+        onBulkDeleteEntries={handleBulkDeleteManagedFiles}
+        onRefresh={refreshManagedFiles}
+      />
+    );
   } else if (activeView === 'runs') {
     pageContent = (
       <RunsPage
@@ -837,21 +954,9 @@ function AdminApp() {
       />
     );
   } else if (activeView === 'runDetail') {
-    pageContent = (
-      <RunDetailPage
-        run={selectedRun}
-        onBack={() => changeView('runs')}
-        onRefresh={refreshRunsAndTasks}
-      />
-    );
+    pageContent = <RunDetailPage run={selectedRun} onBack={() => changeView('runs')} onRefresh={refreshRunsAndTasks} />;
   } else if (activeView === 'settings') {
-    pageContent = (
-      <SettingsPage
-        config={appConfig}
-        submitting={savingConfig}
-        onSubmit={handleAppConfigSubmit}
-      />
-    );
+    pageContent = <SettingsPage config={appConfig} submitting={savingConfig} onSubmit={handleAppConfigSubmit} />;
   } else {
     pageContent = (
       <BackupPage

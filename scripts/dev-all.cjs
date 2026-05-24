@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process';
+const { spawn } = require('node:child_process');
+const path = require('node:path');
 
 const children = [];
 let shuttingDown = false;
@@ -6,7 +7,7 @@ let shuttingDown = false;
 function startProcess(command, args, label, color) {
   const child = spawn(command, args, {
     stdio: ['inherit', 'pipe', 'pipe'],
-    shell: true,
+    shell: false,
     env: process.env,
   });
 
@@ -20,12 +21,20 @@ function startProcess(command, args, label, color) {
     process.stderr.write(`${prefix} ${chunk}`);
   });
 
+  child.on('error', (error) => {
+    if (!shuttingDown) {
+      shuttingDown = true;
+      process.stderr.write(`${prefix} ${error.message}\n`);
+      stopAll();
+      process.exit(1);
+    }
+  });
+
   child.on('exit', (code) => {
     if (!shuttingDown) {
       shuttingDown = true;
       stopAll();
-      const normalizedCode = code === null ? 1 : code;
-      process.exit(normalizedCode);
+      process.exit(code === null ? 1 : code);
     }
   });
 
@@ -56,5 +65,9 @@ process.on('SIGTERM', () => {
   }
 });
 
-startProcess('npm', ['run', 'dev:client'], 'client', '36');
-startProcess('npm', ['run', 'dev:server'], 'server', '33');
+const nodeCommand = process.execPath;
+const viteBin = path.resolve(__dirname, '..', 'node_modules', 'vite', 'bin', 'vite.js');
+const serverEntry = path.resolve(__dirname, '..', 'server.js');
+
+startProcess(nodeCommand, [viteBin], 'client', '36');
+startProcess(nodeCommand, [serverEntry], 'server', '33');

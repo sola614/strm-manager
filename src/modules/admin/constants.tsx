@@ -2,6 +2,7 @@ import {
   AppstoreOutlined,
   CloudServerOutlined,
   FileSyncOutlined,
+  FolderOpenOutlined,
   InboxOutlined,
   ReloadOutlined,
   SettingOutlined,
@@ -54,22 +55,28 @@ export const viewMeta: Record<
   }
 > = {
   dashboard: {
-    title: '仪表板',
+    title: '仪表盘',
     description: '查看服务、任务与运行状态的整体概览。',
-    menuLabel: '仪表板',
+    menuLabel: '仪表盘',
     icon: <AppstoreOutlined />,
   },
   services: {
-    title: 'OpenList 服务管理',
-    description: '先维护 OpenList 服务，再在已有服务下创建定时任务。',
+    title: '服务管理',
+    description: '维护 OpenList 服务配置，供任务统一使用。',
     menuLabel: '服务管理',
     icon: <CloudServerOutlined />,
   },
   tasks: {
-    title: '定时任务管理',
+    title: '任务管理',
     description: '按服务组织 STRM 生成任务，支持定时和手动执行。',
     menuLabel: '任务管理',
     icon: <FileSyncOutlined />,
+  },
+  files: {
+    title: '文件管理',
+    description: '查看任务 STRM 文件存放目录下的所有文件夹和文件，并按目录筛选。',
+    menuLabel: '文件管理',
+    icon: <FolderOpenOutlined />,
   },
   runs: {
     title: '运行记录',

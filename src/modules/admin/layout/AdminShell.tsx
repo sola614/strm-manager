@@ -1,7 +1,7 @@
 import { DownOutlined, KeyOutlined, LogoutOutlined } from '@ant-design/icons';
-import { Avatar, Dropdown, Layout, MenuProps, Space, Typography } from 'antd';
-import { ReactNode } from 'react';
-import { ActiveView } from '../../../types';
+import { Avatar, Dropdown, Layout, type MenuProps, Space, Typography } from 'antd';
+import type { ReactNode } from 'react';
+import type { ActiveView } from '../../../types';
 import { viewMeta } from '../constants';
 
 const { Header, Sider, Content } = Layout;
@@ -40,6 +40,8 @@ export function AdminShell(props: AdminShellProps) {
     ],
   };
 
+  const navigationViews: ActiveView[] = ['dashboard', 'services', 'tasks', 'files', 'runs', 'backup', 'settings'];
+
   return (
     <Layout className="admin-layout">
       <Sider theme="light" width={284} className="admin-sider">
@@ -54,7 +56,7 @@ export function AdminShell(props: AdminShellProps) {
         </div>
 
         <div className="nav-group">
-          {(['dashboard', 'services', 'tasks', 'runs', 'backup', 'settings'] as ActiveView[]).map((viewKey) => {
+          {navigationViews.map((viewKey) => {
             const meta = viewMeta[viewKey];
             const active = activeView === viewKey || (activeView === 'runDetail' && viewKey === 'runs');
             return (
