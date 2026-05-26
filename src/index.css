@@ -128,6 +128,164 @@ button {
   padding: 0 !important;
 }
 
+.files-card .ant-card-body {
+  padding: 0 !important;
+}
+
+.files-card .ant-card-extra {
+  max-width: 100%;
+}
+
+.files-root-select {
+  width: min(360px, 42vw);
+}
+
+.files-context {
+  width: 100%;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid #edf1f7;
+}
+
+.files-meta {
+  width: 100%;
+}
+
+.files-breadcrumb {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  color: #667085;
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.files-breadcrumb-home,
+.files-breadcrumb-link {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.files-breadcrumb-home {
+  color: #6b7280;
+  font-size: 18px;
+}
+
+.files-breadcrumb-home:hover,
+.files-breadcrumb-link:hover {
+  color: #1677ff;
+}
+
+.files-breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.files-breadcrumb-separator {
+  color: #98a2b3;
+  font-size: 12px;
+  margin: 0 8px;
+}
+
+.files-table .ant-table {
+  border-radius: 0 !important;
+}
+
+.files-table .ant-table-container,
+.files-table .ant-table-content {
+  border-radius: 0 !important;
+}
+
+.files-table .ant-table-thead > tr > th {
+  background: #ffffff !important;
+  color: #667085 !important;
+  font-weight: 600 !important;
+  border-bottom: 1px solid #d9dee8 !important;
+  padding: 14px 22px !important;
+}
+
+.files-table .ant-table-thead > tr > th.ant-table-column-sort,
+.files-table .ant-table-tbody > tr > td.ant-table-column-sort {
+  background: #ffffff !important;
+}
+
+.files-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid #edf1f7 !important;
+  padding: 18px 22px !important;
+  color: #6b7280;
+}
+
+.files-table .ant-table-tbody > tr:hover > td {
+  background: #f7fbff !important;
+}
+
+.files-table .ant-table-tbody > tr:hover > td.ant-table-column-sort {
+  background: #f7fbff !important;
+}
+
+.files-table .ant-table-selection-column {
+  width: 46px !important;
+  min-width: 46px !important;
+  padding-right: 8px !important;
+}
+
+.file-name-cell {
+  max-width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #667085;
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  cursor: default;
+  text-align: left;
+}
+
+.file-name-cell--folder {
+  cursor: pointer;
+}
+
+.file-name-cell--folder:hover .file-entry-name {
+  color: #1677ff;
+}
+
+.file-entry-icon {
+  width: 32px;
+  min-width: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #2095f2;
+  font-size: 28px;
+}
+
+.file-entry-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.file-row-action {
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.files-table .ant-table-row:hover .file-row-action,
+.file-row-action:focus-visible,
+.file-row-action.ant-btn-loading {
+  opacity: 1;
+}
+
 .run-detail-log-list {
   width: 100%;
   max-height: calc(100vh - 558px);
@@ -180,6 +338,39 @@ button {
   .run-detail-log-list {
     max-height: 48vh;
     padding: 14px 16px;
+  }
+
+  .files-root-select {
+    width: 100%;
+  }
+
+  .files-card .ant-card-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 14px;
+  }
+
+  .files-card .ant-card-extra {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+
+  .files-card .ant-card-extra .ant-space {
+    width: 100%;
+  }
+
+  .files-card .ant-card-extra .ant-space-item {
+    flex: 1 1 160px;
+  }
+
+  .files-card .ant-card-extra .ant-btn {
+    width: 100%;
+  }
+
+  .files-table .ant-table-thead > tr > th,
+  .files-table .ant-table-tbody > tr > td {
+    padding: 14px 12px !important;
   }
 
   .brand-panel {
