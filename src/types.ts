@@ -92,6 +92,7 @@ export interface AppConfig {
   defaultStrmTargetPath: string;
   logCleanupEnabled: boolean;
   logRetentionDays: number;
+  timezone: string;
   databasePath: string;
   nodeEnv: string;
   resetAdminPasswordEnabled: boolean;
@@ -102,6 +103,7 @@ export interface AppConfigFormValues {
   defaultStrmTargetPath: string;
   logCleanupEnabled: boolean;
   logRetentionDays: number;
+  timezone: string;
 }
 
 export type ActiveView = 'dashboard' | 'services' | 'tasks' | 'files' | 'runs' | 'runDetail' | 'backup' | 'settings';

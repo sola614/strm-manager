@@ -43,6 +43,7 @@ export const defaultAppConfigForm: AppConfigFormValues = {
   defaultStrmTargetPath: '/media/strm',
   logCleanupEnabled: true,
   logRetentionDays: 7,
+  timezone: 'Asia/Shanghai',
 };
 
 export const viewMeta: Record<

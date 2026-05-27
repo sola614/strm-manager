@@ -23,7 +23,7 @@ services:
       # 忘记密码时临时启用：取消下一行注释并重启容器，会把管理员密码重置为 admin。
       # 登录并修改密码后，请删除或重新注释该配置，再次重启容器。
       # RESET_ADMIN_PASSWORD: true
-
+      TZ: Asia/Shanghai
     volumes:
       # 持久化数据库与应用数据。
       - ./data:/app/data

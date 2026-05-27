@@ -26,6 +26,7 @@ const DEFAULT_DOWNLOAD_EXTENSIONS = 'mp4,mkv';
 const DEFAULT_SUBTITLE_EXTENSIONS = 'srt,ass';
 const DEFAULT_LOG_CLEANUP_ENABLED = true;
 const DEFAULT_LOG_RETENTION_DAYS = 7;
+const DEFAULT_TIMEZONE = 'Asia/Shanghai';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 fs.mkdirSync(path.dirname(DATABASE_PATH), { recursive: true });
@@ -34,6 +35,7 @@ const app = express();
 const db = new Database(DATABASE_PATH);
 const scheduledJobs = new Map();
 const activeRuns = new Set();
+let maintenanceJob = null;
 let runtimePort = ENV_PORT;
 
 app.use(cors());
@@ -548,6 +550,10 @@ function initializeSettings() {
     setSetting('log_retention_days', String(DEFAULT_LOG_RETENTION_DAYS));
   }
 
+  if (!getSetting('timezone')) {
+    setSetting('timezone', normalizeTimezone(process.env.TZ) || DEFAULT_TIMEZONE);
+  }
+
   applyAppConfig(getAppConfigPayload());
 }
 
@@ -596,6 +602,10 @@ function getLogRetentionDays() {
   return clampInteger(getSetting('log_retention_days') || DEFAULT_LOG_RETENTION_DAYS, 1, 3650);
 }
 
+function getConfiguredTimezone() {
+  return normalizeTimezone(getSetting('timezone') || process.env.TZ) || DEFAULT_TIMEZONE;
+}
+
 function getAppConfigPayload() {
   return {
     port: getConfiguredPort(),
@@ -603,6 +613,7 @@ function getAppConfigPayload() {
     defaultStrmTargetPath: getConfiguredStrmTargetPath(),
     logCleanupEnabled: getLogCleanupEnabled(),
     logRetentionDays: getLogRetentionDays(),
+    timezone: getConfiguredTimezone(),
     databasePath: DATABASE_PATH,
     nodeEnv: process.env.NODE_ENV || 'development',
     resetAdminPasswordEnabled: Boolean(RESET_ADMIN_PASSWORD),
@@ -614,11 +625,13 @@ function normalizeAppConfigPayload(input, fallback = getAppConfigPayload()) {
   const rawTargetPath = input?.defaultStrmTargetPath ?? input?.default_strm_target_path ?? fallback.defaultStrmTargetPath;
   const rawLogCleanupEnabled = input?.logCleanupEnabled ?? input?.log_cleanup_enabled ?? fallback.logCleanupEnabled;
   const rawLogRetentionDays = input?.logRetentionDays ?? input?.log_retention_days ?? fallback.logRetentionDays;
+  const rawTimezone = input?.timezone ?? fallback.timezone;
 
   const port = Number.parseInt(String(rawPort), 10);
   const defaultStrmTargetPath = sanitizeText(rawTargetPath);
   const logRetentionDays = Number.parseInt(String(rawLogRetentionDays), 10);
   const logCleanupEnabled = parseBoolean(rawLogCleanupEnabled);
+  const timezone = normalizeTimezone(rawTimezone);
   const errors = [];
 
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -633,6 +646,12 @@ function normalizeAppConfigPayload(input, fallback = getAppConfigPayload()) {
     errors.push('日志保留天数必须是 1 到 3650 之间的整数。');
   }
 
+  if (!timezone) {
+    errors.push('时区不能为空，仅支持 IANA 时区名称，例如 Asia/Shanghai。');
+  } else if (!isValidTimezone(timezone)) {
+    errors.push(`时区 ${timezone} 无效，请使用 IANA 时区名称，例如 Asia/Shanghai。`);
+  }
+
   return {
     errors,
     config: {
@@ -640,6 +659,7 @@ function normalizeAppConfigPayload(input, fallback = getAppConfigPayload()) {
       defaultStrmTargetPath: defaultStrmTargetPath || fallback.defaultStrmTargetPath,
       logCleanupEnabled,
       logRetentionDays: Number.isInteger(logRetentionDays) ? logRetentionDays : fallback.logRetentionDays,
+      timezone: timezone || fallback.timezone,
     },
   };
 }
@@ -652,6 +672,9 @@ function applyAppConfig(config) {
   );
   setSetting('log_cleanup_enabled', config.logCleanupEnabled ? '1' : '0');
   setSetting('log_retention_days', String(clampInteger(config.logRetentionDays, 1, 3650)));
+  setSetting('timezone', normalizeTimezone(config.timezone) || DEFAULT_TIMEZONE);
+  process.env.TZ = getConfiguredTimezone();
+  rescheduleTasks();
 }
 
 function shouldForcePasswordChange() {
@@ -1338,13 +1361,17 @@ function cleanupExpiredRuns() {
 
 function startMaintenanceJobs() {
   cleanupExpiredRuns();
-  cron.schedule('0 15 3 * * *', () => {
+  if (maintenanceJob) {
+    maintenanceJob.stop();
+  }
+
+  maintenanceJob = cron.schedule('0 15 3 * * *', () => {
     try {
       cleanupExpiredRuns();
     } catch (error) {
       console.error('Failed to cleanup expired runs:', error);
     }
-  });
+  }, getCronOptions());
 }
 
 function scheduleTask(task) {
@@ -1357,9 +1384,20 @@ function scheduleTask(task) {
     startTaskRun(task.id, 'schedule').catch((error) => {
       console.error(`Scheduled task ${task.id} failed:`, error);
     });
-  });
+  }, getCronOptions());
 
   scheduledJobs.set(task.id, job);
+}
+
+function getCronOptions() {
+  return {
+    timezone: getConfiguredTimezone(),
+  };
+}
+
+function rescheduleTasks() {
+  loadTasks().forEach(scheduleTask);
+  startMaintenanceJobs();
 }
 
 function stopScheduledTask(taskId) {
@@ -1889,6 +1927,19 @@ function normalizeExtensions(value) {
     .join(',');
 }
 
+function normalizeTimezone(value) {
+  return sanitizeText(value).replace(/\s+/g, '');
+}
+
+function isValidTimezone(value) {
+  try {
+    new Intl.DateTimeFormat('zh-CN', { timeZone: value }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function clampInteger(value, min, max) {
   const parsed = Number.parseInt(String(value), 10);
   if (Number.isNaN(parsed)) return min;
@@ -1975,6 +2026,7 @@ function buildBackupPayload() {
       defaultStrmTargetPath: getConfiguredStrmTargetPath(),
       logCleanupEnabled: getLogCleanupEnabled(),
       logRetentionDays: getLogRetentionDays(),
+      timezone: getConfiguredTimezone(),
     },
     services: loadServices().map((service) => ({
       id: service.id,

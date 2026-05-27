@@ -24,6 +24,7 @@ export function SettingsPage(props: SettingsPageProps) {
             defaultStrmTargetPath: props.config.defaultStrmTargetPath,
             logCleanupEnabled: props.config.logCleanupEnabled,
             logRetentionDays: props.config.logRetentionDays,
+            timezone: props.config.timezone,
           }}
           onFinish={props.onSubmit}
           key={[
@@ -31,6 +32,7 @@ export function SettingsPage(props: SettingsPageProps) {
             props.config.defaultStrmTargetPath,
             props.config.logCleanupEnabled ? '1' : '0',
             props.config.logRetentionDays,
+            props.config.timezone,
           ].join('-')}
         >
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -66,6 +68,15 @@ export function SettingsPage(props: SettingsPageProps) {
               rules={[{ required: true, message: '请输入默认 STRM 输出目录' }]}
             >
               <Input placeholder="/media/strm" />
+            </Form.Item>
+
+            <Form.Item
+              label="TZ"
+              name="timezone"
+              tooltip="应用时区，影响定时任务调度和服务端本地时间。建议使用 IANA 时区名称。"
+              rules={[{ required: true, message: '请输入时区' }]}
+            >
+              <Input placeholder="Asia/Shanghai" />
             </Form.Item>
 
             <Form.Item label="定时删除日志" name="logCleanupEnabled">
@@ -122,6 +133,7 @@ export function SettingsPage(props: SettingsPageProps) {
             <Descriptions.Item label="NODE_ENV">
               <Tag color="blue">{props.config.nodeEnv || '-'}</Tag>
             </Descriptions.Item>
+            <Descriptions.Item label="TZ">{props.config.timezone || '-'}</Descriptions.Item>
             <Descriptions.Item label="RESET_ADMIN_PASSWORD">
               {props.config.resetAdminPasswordEnabled ? (
                 <Tag color="warning">已开启</Tag>
