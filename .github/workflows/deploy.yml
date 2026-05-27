@@ -5,7 +5,7 @@ on:
     inputs:
       image_tag:
         description: 'Docker 镜像标签，留空时默认使用 package.json 的 version'
-        required: true
+        required: false
         default: ''
 
 # 必须要赋予工作流读写 Packages 的权限
@@ -69,3 +69,4 @@ jobs:
         cache-to: type=gha,mode=max
         tags: |
           ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          ${{ steps.meta.outputs.image }}:latest
