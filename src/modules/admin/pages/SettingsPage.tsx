@@ -1,8 +1,35 @@
 import { InfoCircleOutlined, SaveOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Descriptions, Form, Input, InputNumber, Radio, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Form, Input, InputNumber, Radio, Select, Space, Tag, Typography } from 'antd';
 import { AppConfigFormValues, AppConfig } from '../../../types';
 
 const { Paragraph, Text } = Typography;
+
+const fallbackTimezones = [
+  'Asia/Shanghai',
+  'Asia/Hong_Kong',
+  'Asia/Taipei',
+  'Asia/Singapore',
+  'Asia/Tokyo',
+  'Asia/Seoul',
+  'UTC',
+  'Europe/London',
+  'Europe/Berlin',
+  'America/New_York',
+  'America/Los_Angeles',
+];
+
+function getTimezoneOptions(currentTimezone: string) {
+  const intlWithTimezones = Intl as typeof Intl & {
+    supportedValuesOf?: (key: 'timeZone') => string[];
+  };
+  const supportedTimezones = intlWithTimezones.supportedValuesOf?.('timeZone') || [];
+  const timezones = Array.from(new Set([currentTimezone, ...fallbackTimezones, ...supportedTimezones].filter(Boolean)));
+
+  return timezones.map((timezone) => ({
+    label: timezone,
+    value: timezone,
+  }));
+}
 
 interface SettingsPageProps {
   config: AppConfig;
@@ -12,6 +39,7 @@ interface SettingsPageProps {
 
 export function SettingsPage(props: SettingsPageProps) {
   const [form] = Form.useForm<AppConfigFormValues>();
+  const timezoneOptions = getTimezoneOptions(props.config.timezone);
 
   return (
     <Space direction="vertical" size={20} style={{ width: '100%' }}>
@@ -76,7 +104,12 @@ export function SettingsPage(props: SettingsPageProps) {
               tooltip="应用时区，影响定时任务调度和服务端本地时间。建议使用 IANA 时区名称。"
               rules={[{ required: true, message: '请输入时区' }]}
             >
-              <Input placeholder="Asia/Shanghai" />
+              <Select
+                showSearch
+                placeholder="Asia/Shanghai"
+                options={timezoneOptions}
+                optionFilterProp="label"
+              />
             </Form.Item>
 
             <Form.Item label="定时删除日志" name="logCleanupEnabled">
