@@ -1020,7 +1020,17 @@ function AdminApp() {
       />
     );
   } else if (activeView === 'runDetail') {
-    pageContent = <RunDetailPage run={selectedRun} onBack={() => changeView('runs')} onRefresh={refreshRunsAndTasks} />;
+    pageContent = (
+      <RunDetailPage
+        run={selectedRun}
+        onBack={() => changeView('runs')}
+        onRefresh={refreshRunsAndTasks}
+        onRunUpdate={(run) => {
+          setSelectedRun(run);
+          setRuns((currentRuns) => currentRuns.map((item) => (item.id === run.id ? run : item)));
+        }}
+      />
+    );
   } else if (activeView === 'settings') {
     pageContent = <SettingsPage config={appConfig} submitting={savingConfig} onSubmit={handleAppConfigSubmit} />;
   } else {

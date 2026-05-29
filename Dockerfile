@@ -25,6 +25,7 @@ ENV DATABASE_PATH=/app/data/database.sqlite
 
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/server.js ./server.js
+COPY --from=build /app/server ./server
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 

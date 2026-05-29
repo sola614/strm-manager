@@ -1,5 +1,7 @@
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Button, Card, Descriptions, Space, Tag, Typography } from 'antd';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { getStoredToken } from '../../../lib/api';
 import { TaskRun } from '../../../types';
 import { formatDateTime, statusColor } from '../utils';
 
@@ -9,9 +11,62 @@ interface RunDetailPageProps {
   run: TaskRun | null;
   onBack: () => void;
   onRefresh: () => void;
+  onRunUpdate: (run: TaskRun) => void;
 }
 
 export function RunDetailPage(props: RunDetailPageProps) {
+  const [wsConnected, setWsConnected] = useState(false);
+  const onRunUpdateRef = useRef(props.onRunUpdate);
+
+  useEffect(() => {
+    onRunUpdateRef.current = props.onRunUpdate;
+  }, [props.onRunUpdate]);
+
+  const websocketUrl = useMemo(() => {
+    if (!props.run?.id || typeof window === 'undefined') return '';
+
+    const token = getStoredToken();
+    if (!token) return '';
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = new URL(`${protocol}//${window.location.host}/ws/runs`);
+    url.searchParams.set('token', token);
+    return url.toString();
+  }, [props.run?.id]);
+
+  useEffect(() => {
+    if (!websocketUrl || !props.run?.id) {
+      setWsConnected(false);
+      return;
+    }
+
+    const ws = new WebSocket(websocketUrl);
+    const runId = props.run.id;
+
+    ws.addEventListener('open', () => {
+      setWsConnected(true);
+      ws.send(JSON.stringify({ type: 'subscribeRun', runId }));
+    });
+
+    ws.addEventListener('message', (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload?.type === 'runSnapshot' && payload.run?.id === runId) {
+          onRunUpdateRef.current(payload.run);
+        }
+      } catch {
+        // Ignore malformed websocket payloads.
+      }
+    });
+
+    ws.addEventListener('close', () => setWsConnected(false));
+    ws.addEventListener('error', () => setWsConnected(false));
+
+    return () => {
+      ws.close();
+    };
+  }, [props.run?.id, websocketUrl]);
+
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Space>
@@ -21,6 +76,11 @@ export function RunDetailPage(props: RunDetailPageProps) {
         <Button icon={<ReloadOutlined />} onClick={props.onRefresh}>
           刷新
         </Button>
+        {props.run?.status === 'running' ? (
+          <Tag color={wsConnected ? 'processing' : 'default'}>
+            {wsConnected ? '实时日志已连接' : '实时日志未连接'}
+          </Tag>
+        ) : null}
       </Space>
 
       <Card className="module-card" title="运行概览">
