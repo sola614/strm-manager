@@ -286,6 +286,22 @@ button {
   opacity: 1;
 }
 
+.strm-content-preview {
+  max-height: 52vh;
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #f8fafc;
+  border: 1px solid #e5eaf2;
+  border-radius: 8px;
+  color: #344054;
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .run-detail-log-list {
   width: 100%;
   max-height: calc(100vh - 558px);

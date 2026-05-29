@@ -4,6 +4,7 @@ import {
   AppConfigFormValues,
   BackupPayload,
   ManagedFilesPayload,
+  ManagedFileContent,
   OpenlistService,
   OpenlistServiceFormValues,
   SessionUser,
@@ -149,6 +150,14 @@ export function updateService(id: string, values: OpenlistServiceFormValues) {
   });
 }
 
+export function bulkUpdateServicesEnabled(ids: string[], enabled: boolean) {
+  return requestJson<{ updatedCount: number; skippedCount: number }>('/api/services/bulk-enabled', {
+    method: 'POST',
+    headers: buildHeaders(undefined, true),
+    body: JSON.stringify({ ids, enabled }),
+  });
+}
+
 export function deleteService(id: string) {
   return requestJson<void>(`/api/services/${encodeURIComponent(id)}`, {
     method: 'DELETE',
@@ -172,6 +181,13 @@ export function getManagedFiles(rootId?: string, directory?: string) {
     endpoint.searchParams.set('directory', directory);
   }
   return requestJson<ManagedFilesPayload>(endpoint);
+}
+
+export function getManagedFileContent(rootId: string, relativePath: string) {
+  const endpoint = new URL('/api/files/content', window.location.origin);
+  endpoint.searchParams.set('rootId', rootId);
+  endpoint.searchParams.set('relativePath', relativePath);
+  return requestJson<ManagedFileContent>(endpoint);
 }
 
 export function deleteManagedFile(rootId: string, relativePath: string) {
@@ -205,6 +221,14 @@ export function updateTask(id: string, values: SyncTaskFormValues) {
     method: 'PUT',
     headers: buildHeaders(undefined, true),
     body: JSON.stringify(payload),
+  });
+}
+
+export function bulkUpdateTasksEnabled(ids: string[], enabled: boolean) {
+  return requestJson<{ updatedCount: number; skippedCount: number }>('/api/tasks/bulk-enabled', {
+    method: 'POST',
+    headers: buildHeaders(undefined, true),
+    body: JSON.stringify({ ids, enabled }),
   });
 }
 

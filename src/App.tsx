@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   bulkDeleteRuns,
   bulkDeleteManagedFiles,
+  bulkUpdateServicesEnabled,
+  bulkUpdateTasksEnabled,
   changePassword,
   createService,
   createTask,
@@ -14,6 +16,7 @@ import {
   exportBackup,
   getAppConfig,
   getCurrentUser,
+  getManagedFileContent,
   getManagedFiles,
   getRun,
   getRuns,
@@ -52,6 +55,7 @@ import type {
   AppConfig,
   AuthResponse,
   ManagedFileEntry,
+  ManagedFileContent,
   ManagedFileRoot,
   OpenlistService,
   SessionUser,
@@ -138,7 +142,10 @@ function AdminApp() {
   const [latestLogModalOpen, setLatestLogModalOpen] = useState(false);
   const [logLoading, setLogLoading] = useState(false);
   const [managedFilesLoading, setManagedFilesLoading] = useState(false);
+  const [managedFileContentLoading, setManagedFileContentLoading] = useState(false);
   const [bulkDeletingFiles, setBulkDeletingFiles] = useState(false);
+  const [bulkUpdatingServices, setBulkUpdatingServices] = useState(false);
+  const [bulkUpdatingTasks, setBulkUpdatingTasks] = useState(false);
   const [bulkDeletingRuns, setBulkDeletingRuns] = useState(false);
   const [deletingManagedFileIds, setDeletingManagedFileIds] = useState<string[]>([]);
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([]);
@@ -147,6 +154,7 @@ function AdminApp() {
   const [editingTask, setEditingTask] = useState<SyncTask | null>(null);
   const [logTask, setLogTask] = useState<SyncTask | null>(null);
   const [latestRunLog, setLatestRunLog] = useState<TaskRun | null>(null);
+  const [managedFileContent, setManagedFileContent] = useState<ManagedFileContent | null>(null);
   const [selectedRun, setSelectedRun] = useState<TaskRun | null>(null);
   const [selectedRunId, setSelectedRunId] = useState(() => getRunIdFromLocation());
 
@@ -648,6 +656,24 @@ function AdminApp() {
     }
   }
 
+  async function handleBulkUpdateServicesEnabled(serviceIds: string[], enabled: boolean) {
+    if (!serviceIds.length) {
+      message.warning('请先勾选需要修改状态的服务。');
+      return;
+    }
+
+    setBulkUpdatingServices(true);
+    try {
+      const result = await bulkUpdateServicesEnabled(serviceIds, enabled);
+      await Promise.all([refreshServices(), refreshTasks(), refreshRuns()]);
+      message.success(`已${enabled ? '启用' : '禁用'} ${result.updatedCount} 个服务。`);
+    } catch (error) {
+      message.error(formatError(error, '批量修改服务状态失败。'));
+    } finally {
+      setBulkUpdatingServices(false);
+    }
+  }
+
   function openCreateTask() {
     if (!services.length) {
       message.warning('请先新增 OpenList 服务。');
@@ -744,6 +770,24 @@ function AdminApp() {
     }
   }
 
+  async function handleBulkUpdateTasksEnabled(taskIds: string[], enabled: boolean) {
+    if (!taskIds.length) {
+      message.warning('请先勾选已配置定时的任务。');
+      return;
+    }
+
+    setBulkUpdatingTasks(true);
+    try {
+      const result = await bulkUpdateTasksEnabled(taskIds, enabled);
+      await refreshTasks();
+      message.success(`已${enabled ? '启用' : '禁用'} ${result.updatedCount} 个任务。`);
+    } catch (error) {
+      message.error(formatError(error, '批量修改任务状态失败。'));
+    } finally {
+      setBulkUpdatingTasks(false);
+    }
+  }
+
   async function triggerTask(task: SyncTask) {
     try {
       await triggerTaskRun(task.id);
@@ -798,6 +842,20 @@ function AdminApp() {
     } finally {
       setBulkDeletingFiles(false);
       setDeletingManagedFileIds((current) => current.filter((id) => !entries.some((entry) => entry.id === id)));
+    }
+  }
+
+  async function handleViewManagedFileContent(entry: ManagedFileEntry) {
+    if (!fileRootFilter) return;
+
+    setManagedFileContentLoading(true);
+    try {
+      const content = await getManagedFileContent(fileRootFilter, entry.relativePath);
+      setManagedFileContent(content);
+    } catch (error) {
+      message.error(formatError(error, '读取文件内容失败。'));
+    } finally {
+      setManagedFileContentLoading(false);
     }
   }
 
@@ -880,10 +938,12 @@ function AdminApp() {
         services={services}
         tasks={tasks}
         actionsDisabled={actionsDisabled}
+        bulkUpdating={bulkUpdatingServices}
         onCreateService={openCreateService}
         onEditService={openEditService}
         onDeleteService={removeService}
         onToggleServiceEnabled={toggleServiceEnabled}
+        onBulkUpdateServicesEnabled={handleBulkUpdateServicesEnabled}
         onRefresh={refreshServices}
       />
     );
@@ -898,12 +958,14 @@ function AdminApp() {
         logTask={logTask}
         latestRunLog={latestRunLog}
         logLoading={logLoading}
+        bulkUpdating={bulkUpdatingTasks}
         onFilterChange={setServiceFilter}
         onCreateTask={openCreateTask}
         onEditTask={openEditTask}
         onDeleteTask={removeTask}
         onTriggerTask={triggerTask}
         onToggleTaskEnabled={toggleTaskEnabled}
+        onBulkUpdateTasksEnabled={handleBulkUpdateTasksEnabled}
         onOpenLog={openTaskLog}
         onCloseLog={() => setLatestLogModalOpen(false)}
         onViewRunDetail={openRunDetail}
@@ -921,6 +983,8 @@ function AdminApp() {
         loading={managedFilesLoading}
         deletingIds={deletingManagedFileIds}
         bulkDeleting={bulkDeletingFiles}
+        fileContent={managedFileContent}
+        fileContentLoading={managedFileContentLoading}
         onFilterChange={(value) => {
           void refreshManagedFiles(value, '');
         }}
@@ -928,6 +992,8 @@ function AdminApp() {
         onGoParent={openManagedParentDirectory}
         onDeleteEntry={handleDeleteManagedFile}
         onBulkDeleteEntries={handleBulkDeleteManagedFiles}
+        onViewFileContent={handleViewManagedFileContent}
+        onCloseFileContent={() => setManagedFileContent(null)}
         onRefresh={refreshManagedFiles}
       />
     );
