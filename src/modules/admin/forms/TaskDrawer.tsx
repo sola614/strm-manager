@@ -225,6 +225,7 @@ export function TaskDrawer(props: TaskDrawerProps) {
               const finalValues: SyncTaskFormValues = {
                 ...values,
                 cron: values.scheduleEnabled ? effectiveCron : '',
+                enabled: values.scheduleEnabled ? values.enabled : true,
                 callbackUrl: values.notifyEnabled ? values.callbackUrl || '' : '',
               };
               await props.onSubmit(finalValues);
@@ -344,17 +345,7 @@ export function TaskDrawer(props: TaskDrawerProps) {
         </Row>
 
         <Row gutter={16}>
-          <Col span={8}>
-            <Form.Item label="是否启用任务" name="enabled">
-              <Radio.Group
-                options={[
-                  { label: '否', value: false },
-                  { label: '是', value: true },
-                ]}
-              />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
+          <Col span={12}>
             <Form.Item label="是否覆盖原文件" name="overwriteExisting">
               <Radio.Group
                 options={[
@@ -364,7 +355,7 @@ export function TaskDrawer(props: TaskDrawerProps) {
               />
             </Form.Item>
           </Col>
-          <Col span={8}>
+          <Col span={12}>
             <Form.Item label="通知选项" name="notifyEnabled">
               <Radio.Group
                 options={[
@@ -509,6 +500,21 @@ export function TaskDrawer(props: TaskDrawerProps) {
                 description="该任务不会自动定时运行，可在任务列表中点击“立即执行”手动触发。"
               />
             )
+          }
+        </Form.Item>
+
+        <Form.Item shouldUpdate={(prev, next) => prev.scheduleEnabled !== next.scheduleEnabled} noStyle>
+          {({ getFieldValue }) =>
+            getFieldValue('scheduleEnabled') ? (
+              <Form.Item label="是否启用定时任务" name="enabled">
+                <Radio.Group
+                  options={[
+                    { label: '否', value: false },
+                    { label: '是', value: true },
+                  ]}
+                />
+              </Form.Item>
+            ) : null
           }
         </Form.Item>
       </Form>

@@ -11,15 +11,18 @@ interface ServicesPageProps {
   services: OpenlistService[];
   tasks: SyncTask[];
   actionsDisabled: boolean;
+  bulkUpdating: boolean;
   onCreateService: () => void;
   onEditService: (service: OpenlistService) => void;
   onDeleteService: (service: OpenlistService) => void;
   onToggleServiceEnabled: (service: OpenlistService, enabled: boolean) => void;
+  onBulkUpdateServicesEnabled: (serviceIds: string[], enabled: boolean) => void;
   onRefresh: () => void;
 }
 
 export function ServicesPage(props: ServicesPageProps) {
   const [pageSize, setPageSize] = useState(() => getStoredPageSize('services'));
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
   function changeServiceEnabled(service: OpenlistService, enabled: boolean) {
     if (enabled || !service.enabled) {
@@ -35,6 +38,28 @@ export function ServicesPage(props: ServicesPageProps) {
       cancelText: '取消',
       okButtonProps: { danger: true },
       onOk: () => props.onToggleServiceEnabled(service, false),
+    });
+  }
+
+  function bulkChangeServicesEnabled(enabled: boolean) {
+    const serviceIds = selectedRowKeys.map(String);
+    if (enabled) {
+      props.onBulkUpdateServicesEnabled(serviceIds, true);
+      setSelectedRowKeys([]);
+      return;
+    }
+
+    const taskCount = props.tasks.filter((task) => serviceIds.includes(task.serviceId)).length;
+    Modal.confirm({
+      title: '批量禁用 OpenList 服务',
+      content: `禁用服务后，将同步禁用关联的 ${taskCount} 个任务。确认继续？`,
+      okText: '确认禁用',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => {
+        props.onBulkUpdateServicesEnabled(serviceIds, false);
+        setSelectedRowKeys([]);
+      },
     });
   }
 
@@ -137,6 +162,20 @@ export function ServicesPage(props: ServicesPageProps) {
       title="OpenList 服务管理"
       extra={
         <Space>
+          <Button
+            disabled={props.actionsDisabled || !selectedRowKeys.length}
+            loading={props.bulkUpdating}
+            onClick={() => bulkChangeServicesEnabled(true)}
+          >
+            批量启用
+          </Button>
+          <Button
+            disabled={props.actionsDisabled || !selectedRowKeys.length}
+            loading={props.bulkUpdating}
+            onClick={() => bulkChangeServicesEnabled(false)}
+          >
+            批量禁用
+          </Button>
           <Button icon={<ReloadOutlined />} onClick={props.onRefresh}>
             刷新
           </Button>
@@ -151,7 +190,16 @@ export function ServicesPage(props: ServicesPageProps) {
         </Space>
       }
     >
-      <Table rowKey="id" columns={columns} dataSource={props.services} pagination={pagination} />
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={props.services}
+        pagination={pagination}
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys),
+        }}
+      />
     </Card>
   );
 }

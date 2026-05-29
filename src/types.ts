@@ -133,6 +133,13 @@ export interface ManagedFileEntry {
   updatedAt: string | null;
 }
 
+export interface ManagedFileContent {
+  name: string;
+  relativePath: string;
+  content: string;
+  updatedAt: string | null;
+}
+
 export interface ManagedFilesPayload {
   roots: ManagedFileRoot[];
   currentRootId: string | null;

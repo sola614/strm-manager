@@ -212,6 +212,31 @@ app.post('/api/services', requireAuth(), (req, res) => {
   res.status(201).json(getServiceById(newId));
 });
 
+app.post('/api/services/bulk-enabled', requireAuth(), (req, res) => {
+  const ids = Array.isArray(req.body?.ids)
+    ? Array.from(new Set(req.body.ids.map((id) => sanitizeText(id)).filter(Boolean)))
+    : [];
+  const enabled = parseBoolean(req.body?.enabled);
+
+  if (!ids.length) {
+    return res.status(400).json({
+      code: 'INVALID_SERVICE_IDS',
+      error: '请选择至少一个 OpenList 服务。',
+    });
+  }
+
+  try {
+    const result = bulkUpdateServiceEnabled(ids, enabled);
+    res.json(result);
+  } catch (error) {
+    const status = typeof error?.status === 'number' ? error.status : 400;
+    res.status(status).json({
+      code: error?.code || 'SERVICE_BULK_UPDATE_FAILED',
+      error: formatError(error),
+    });
+  }
+});
+
 app.put('/api/services/:id', requireAuth(), (req, res) => {
   const existing = getServiceById(req.params.id);
   if (!existing) {
@@ -278,6 +303,31 @@ app.post('/api/tasks', requireAuth(), (req, res) => {
   res.status(201).json(created);
 });
 
+app.post('/api/tasks/bulk-enabled', requireAuth(), (req, res) => {
+  const ids = Array.isArray(req.body?.ids)
+    ? Array.from(new Set(req.body.ids.map((id) => sanitizeText(id)).filter(Boolean)))
+    : [];
+  const enabled = parseBoolean(req.body?.enabled);
+
+  if (!ids.length) {
+    return res.status(400).json({
+      code: 'INVALID_TASK_IDS',
+      error: '请选择至少一个定时任务。',
+    });
+  }
+
+  try {
+    const result = bulkUpdateTaskEnabled(ids, enabled);
+    res.json(result);
+  } catch (error) {
+    const status = typeof error?.status === 'number' ? error.status : 400;
+    res.status(status).json({
+      code: error?.code || 'TASK_BULK_UPDATE_FAILED',
+      error: formatError(error),
+    });
+  }
+});
+
 app.put('/api/tasks/:id', requireAuth(), (req, res) => {
   const existing = getTaskById(req.params.id);
   if (!existing) {
@@ -342,6 +392,20 @@ app.get('/api/files', requireAuth(), async (req, res) => {
     const status = typeof error?.status === 'number' ? error.status : 500;
     res.status(status).json({
       code: error?.code || 'FILES_LOAD_FAILED',
+      error: formatError(error),
+    });
+  }
+});
+
+app.get('/api/files/content', requireAuth(), async (req, res) => {
+  try {
+    const rootId = sanitizeText(req.query.rootId);
+    const relativePath = sanitizeText(req.query.relativePath);
+    res.json(await readManagedStrmFileContent(rootId, relativePath));
+  } catch (error) {
+    const status = typeof error?.status === 'number' ? error.status : 400;
+    res.status(status).json({
+      code: error?.code || 'FILE_CONTENT_LOAD_FAILED',
       error: formatError(error),
     });
   }
@@ -631,6 +695,41 @@ function updateServiceRecord(id, service) {
   `).run(service.name, service.url, service.token, service.baseUrl, service.enabled ? 1 : 0, now(), id);
 }
 
+function bulkUpdateServiceEnabled(ids, enabled) {
+  const services = ids.map((id) => getServiceById(id)).filter(Boolean);
+  if (!services.length) {
+    const error = new Error('请选择至少一个存在的 OpenList 服务。');
+    error.status = 400;
+    error.code = 'SERVICE_BULK_UPDATE_EMPTY';
+    throw error;
+  }
+
+  const timestamp = now();
+  const update = db.prepare('UPDATE services SET enabled = ?, updated_at = ? WHERE id = ?');
+  const tx = db.transaction(() => {
+    for (const service of services) {
+      update.run(enabled ? 1 : 0, timestamp, service.id);
+      if (!enabled) {
+        db.prepare('UPDATE tasks SET enabled = 0, updated_at = ? WHERE service_id = ?').run(timestamp, service.id);
+      }
+    }
+  });
+  tx();
+
+  services.forEach((service) => {
+    if (!enabled) {
+      loadTasks(service.id).forEach((task) => stopScheduledTask(task.id));
+      return;
+    }
+    loadTasks(service.id).forEach(scheduleTask);
+  });
+
+  return {
+    updatedCount: services.length,
+    skippedCount: ids.length - services.length,
+  };
+}
+
 function removeServiceRecord(id) {
   db.prepare('DELETE FROM services WHERE id = ?').run(id);
 }
@@ -899,6 +998,42 @@ async function deleteManagedFileEntries(rootId, relativePaths) {
   return relativePaths.length;
 }
 
+async function readManagedStrmFileContent(rootId, relativePath) {
+  const roots = await loadManagedFileRoots();
+  const root = resolveManagedFileRoot(roots, rootId);
+  const normalizedRelativePath = normalizeManagedDirectory(relativePath);
+
+  if (!normalizedRelativePath || path.extname(normalizedRelativePath).toLowerCase() !== '.strm') {
+    const error = new Error('仅支持查看 .strm 文件内容。');
+    error.status = 400;
+    error.code = 'FILE_CONTENT_UNSUPPORTED';
+    throw error;
+  }
+
+  const absolutePath = resolveManagedFileAbsolutePath(root, normalizedRelativePath);
+  const stat = await fs.promises.stat(absolutePath);
+  if (!stat.isFile()) {
+    const error = new Error('目标不是文件。');
+    error.status = 400;
+    error.code = 'FILE_CONTENT_NOT_FILE';
+    throw error;
+  }
+
+  if (stat.size > 1024 * 1024) {
+    const error = new Error('文件过大，暂不支持在线查看。');
+    error.status = 413;
+    error.code = 'FILE_CONTENT_TOO_LARGE';
+    throw error;
+  }
+
+  return {
+    name: path.basename(normalizedRelativePath),
+    relativePath: normalizedRelativePath,
+    content: await fs.promises.readFile(absolutePath, 'utf8'),
+    updatedAt: stat.mtime ? stat.mtime.toISOString() : null,
+  };
+}
+
 function createTaskRecord(task) {
   const timestamp = now();
   const result = db.prepare(`
@@ -966,6 +1101,37 @@ function updateTaskRecord(id, task) {
     now(),
     id,
   );
+}
+
+function bulkUpdateTaskEnabled(ids, enabled) {
+  const tasks = ids.map((id) => getTaskById(id)).filter(Boolean);
+  const schedulableTasks = tasks.filter((task) => Boolean(task.cron));
+
+  if (!schedulableTasks.length) {
+    const error = new Error('请选择至少一个已配置定时的任务。');
+    error.status = 400;
+    error.code = 'TASK_BULK_UPDATE_EMPTY';
+    throw error;
+  }
+
+  const timestamp = now();
+  const update = db.prepare('UPDATE tasks SET enabled = ?, updated_at = ? WHERE id = ? AND cron != ?');
+  const tx = db.transaction(() => {
+    for (const task of schedulableTasks) {
+      update.run(enabled ? 1 : 0, timestamp, task.id, '');
+    }
+  });
+  tx();
+
+  schedulableTasks.forEach((task) => {
+    const updated = getTaskById(task.id);
+    if (updated) scheduleTask(updated);
+  });
+
+  return {
+    updatedCount: schedulableTasks.length,
+    skippedCount: ids.length - schedulableTasks.length,
+  };
 }
 
 function removeTaskRecord(id) {
@@ -1250,12 +1416,12 @@ async function startTaskRun(taskId, triggerType) {
     throw error;
   }
 
-  if (!task.enabled) {
+  if (task.cron && !task.enabled) {
     if (triggerType === 'schedule') {
       return null;
     }
 
-    const error = new Error('任务已禁用，请启用后再执行。');
+    const error = new Error('定时任务已禁用，请启用后再执行。');
     error.status = 409;
     error.code = 'TASK_DISABLED';
     throw error;

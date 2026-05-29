@@ -1,4 +1,5 @@
 import {
+  CopyOutlined,
   ArrowUpOutlined,
   DeleteOutlined,
   FileOutlined,
@@ -6,11 +7,12 @@ import {
   HomeFilled,
   ReloadOutlined,
   RightOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Empty, Popconfirm, Select, Space, Table, Tooltip, Typography } from 'antd';
+import { App as AntdApp, Button, Card, Empty, Modal, Popconfirm, Select, Space, Table, Tooltip, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useMemo, useState } from 'react';
-import type { ManagedFileEntry, ManagedFileRoot } from '../../../types';
+import type { ManagedFileContent, ManagedFileEntry, ManagedFileRoot } from '../../../types';
 import { getStoredPageSize, setStoredPageSize } from '../utils';
 
 const { Paragraph, Text } = Typography;
@@ -24,11 +26,15 @@ interface FilesPageProps {
   loading: boolean;
   deletingIds: string[];
   bulkDeleting: boolean;
+  fileContent: ManagedFileContent | null;
+  fileContentLoading: boolean;
   onFilterChange: (value: string) => void;
   onOpenDirectory: (relativePath: string) => void;
   onGoParent: () => void;
   onDeleteEntry: (entry: ManagedFileEntry) => void;
   onBulkDeleteEntries: (entries: ManagedFileEntry[]) => void;
+  onViewFileContent: (entry: ManagedFileEntry) => void;
+  onCloseFileContent: () => void;
   onRefresh: () => void;
 }
 
@@ -75,9 +81,25 @@ function formatFileTime(value: string | null) {
   return `${get('year')}/${get('month')}/${get('day')} ${get('hour')}:${get('minute')}`;
 }
 
+function isStrmFile(entry: ManagedFileEntry) {
+  return entry.type === 'file' && entry.name.toLowerCase().endsWith('.strm');
+}
+
 export function FilesPage(props: FilesPageProps) {
+  const { message } = AntdApp.useApp();
   const [pageSize, setPageSize] = useState(() => getStoredPageSize('files'));
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+
+  async function copyFileContent() {
+    if (!props.fileContent?.content) return;
+
+    try {
+      await navigator.clipboard.writeText(props.fileContent.content);
+      message.success('文件内容已复制。');
+    } catch {
+      message.error('复制失败，请手动复制。');
+    }
+  }
 
   const selectedRoot = useMemo(
     () => props.roots.find((root) => root.id === props.rootFilter) || null,
@@ -120,14 +142,19 @@ export function FilesPage(props: FilesPageProps) {
       render: (_value: unknown, record: ManagedFileEntry) => (
         <button
           type="button"
-          className={`file-name-cell ${record.type === 'directory' ? 'file-name-cell--folder' : ''}`}
+          className={`file-name-cell ${record.type === 'directory' || isStrmFile(record) ? 'file-name-cell--folder' : ''}`}
           onClick={() => {
             if (record.type === 'directory') {
               setSelectedRowKeys([]);
               props.onOpenDirectory(record.relativePath);
             }
           }}
-          disabled={record.type !== 'directory'}
+          onDoubleClick={() => {
+            if (isStrmFile(record)) {
+              props.onViewFileContent(record);
+            }
+          }}
+          disabled={record.type !== 'directory' && !isStrmFile(record)}
         >
           <span className="file-entry-icon" aria-hidden="true">
             {record.type === 'directory' ? <FolderFilled /> : <FileOutlined />}
@@ -154,25 +181,39 @@ export function FilesPage(props: FilesPageProps) {
     {
       title: '操作',
       key: 'actions',
-      width: 96,
+      width: 120,
       align: 'right',
       render: (_value: unknown, record: ManagedFileEntry) => (
-        <Popconfirm
-          title={`删除${record.type === 'directory' ? '文件夹' : '文件'}`}
-          description={`确认删除 ${record.name} 吗？`}
-          onConfirm={() => props.onDeleteEntry(record)}
-        >
-          <Tooltip title="删除">
-            <Button
-              className="file-row-action"
-              size="small"
-              type="text"
-              danger
-              icon={<DeleteOutlined />}
-              loading={props.deletingIds.includes(record.id)}
-            />
-          </Tooltip>
-        </Popconfirm>
+        <Space size={4}>
+          {isStrmFile(record) ? (
+            <Tooltip title="查看内容">
+              <Button
+                className="file-row-action"
+                size="small"
+                type="text"
+                icon={<EyeOutlined />}
+                loading={props.fileContentLoading}
+                onClick={() => props.onViewFileContent(record)}
+              />
+            </Tooltip>
+          ) : null}
+          <Popconfirm
+            title={`删除${record.type === 'directory' ? '文件夹' : '文件'}`}
+            description={`确认删除 ${record.name} 吗？`}
+            onConfirm={() => props.onDeleteEntry(record)}
+          >
+            <Tooltip title="删除">
+              <Button
+                className="file-row-action"
+                size="small"
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                loading={props.deletingIds.includes(record.id)}
+              />
+            </Tooltip>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -191,64 +232,65 @@ export function FilesPage(props: FilesPageProps) {
       : false;
 
   return (
-    <Card
-      className="module-card files-card"
-      title="文件管理"
-      extra={
-        <Space wrap>
-          <Select
-            value={props.rootFilter}
-            className="files-root-select"
-            onChange={(value) => {
-              setSelectedRowKeys([]);
-              props.onFilterChange(value);
-            }}
-            options={props.roots.map((root) => ({
-              label: root.targetPath,
-              value: root.id,
-            }))}
-          />
-          <Button
-            icon={<ArrowUpOutlined />}
-            disabled={props.parentDirectory === null}
-            onClick={() => {
-              setSelectedRowKeys([]);
-              props.onGoParent();
-            }}
-          >
-            上级目录
-          </Button>
-          <Popconfirm
-            title="批量删除"
-            description={`确认删除选中的 ${selectedEntries.length} 项吗？`}
-            disabled={!selectedEntries.length}
-            onConfirm={() => {
-              props.onBulkDeleteEntries(selectedEntries);
-              setSelectedRowKeys([]);
-            }}
-          >
+    <>
+      <Card
+        className="module-card files-card"
+        title="文件管理"
+        extra={
+          <Space wrap>
+            <Select
+              value={props.rootFilter}
+              className="files-root-select"
+              onChange={(value) => {
+                setSelectedRowKeys([]);
+                props.onFilterChange(value);
+              }}
+              options={props.roots.map((root) => ({
+                label: root.targetPath,
+                value: root.id,
+              }))}
+            />
             <Button
-              danger
-              icon={<DeleteOutlined />}
-              disabled={!selectedEntries.length}
-              loading={props.bulkDeleting}
+              icon={<ArrowUpOutlined />}
+              disabled={props.parentDirectory === null}
+              onClick={() => {
+                setSelectedRowKeys([]);
+                props.onGoParent();
+              }}
             >
-              批量删除
+              上级目录
             </Button>
-          </Popconfirm>
-          <Button
-            icon={<ReloadOutlined />}
-            loading={props.loading}
-            onClick={() => {
-              setSelectedRowKeys([]);
-              props.onRefresh();
-            }}
-          >
-            刷新
-          </Button>
-        </Space>
-      }
-    >
+            <Popconfirm
+              title="批量删除"
+              description={`确认删除选中的 ${selectedEntries.length} 项吗？`}
+              disabled={!selectedEntries.length}
+              onConfirm={() => {
+                props.onBulkDeleteEntries(selectedEntries);
+                setSelectedRowKeys([]);
+              }}
+            >
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                disabled={!selectedEntries.length}
+                loading={props.bulkDeleting}
+              >
+                批量删除
+              </Button>
+            </Popconfirm>
+            <Button
+              icon={<ReloadOutlined />}
+              loading={props.loading}
+              onClick={() => {
+                setSelectedRowKeys([]);
+                props.onRefresh();
+              }}
+            >
+              刷新
+            </Button>
+          </Space>
+        }
+      >
       {selectedRoot && !selectedRoot.exists ? (
         <Empty
           description={
@@ -327,6 +369,28 @@ export function FilesPage(props: FilesPageProps) {
           emptyText: selectedRoot && !selectedRoot.exists ? '当前目录不可用' : '当前目录暂无文件数据',
         }}
       />
-    </Card>
+      </Card>
+      <Modal
+        open={Boolean(props.fileContent)}
+        title={props.fileContent ? props.fileContent.name : '文件内容'}
+        footer={
+          <Button
+            type="primary"
+            icon={<CopyOutlined />}
+            disabled={!props.fileContent?.content}
+            onClick={copyFileContent}
+          >
+            复制内容
+          </Button>
+        }
+        onCancel={props.onCloseFileContent}
+        width={760}
+      >
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Text type="secondary">{props.fileContent?.relativePath}</Text>
+          <pre className="strm-content-preview">{props.fileContent?.content}</pre>
+        </Space>
+      </Modal>
+    </>
   );
 }

@@ -25,12 +25,14 @@ interface TasksPageProps {
   logTask: SyncTask | null;
   latestRunLog: TaskRun | null;
   logLoading: boolean;
+  bulkUpdating: boolean;
   onFilterChange: (value: string) => void;
   onCreateTask: () => void;
   onEditTask: (task: SyncTask) => void;
   onDeleteTask: (task: SyncTask) => void;
   onTriggerTask: (task: SyncTask) => void;
   onToggleTaskEnabled: (task: SyncTask, enabled: boolean) => void;
+  onBulkUpdateTasksEnabled: (taskIds: string[], enabled: boolean) => void;
   onOpenLog: (task: SyncTask) => void;
   onCloseLog: () => void;
   onViewRunDetail: (run: TaskRun | null) => void;
@@ -39,11 +41,16 @@ interface TasksPageProps {
 
 export function TasksPage(props: TasksPageProps) {
   const [pageSize, setPageSize] = useState(() => getStoredPageSize('tasks'));
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
   function canRunTask(task: SyncTask) {
     const service = props.services.find((item) => item.id === task.serviceId);
-    return task.enabled && service?.enabled !== false;
+    return (!task.cron || task.enabled) && service?.enabled !== false;
   }
+
+  const selectedScheduledTaskIds = props.tasks
+    .filter((task) => selectedRowKeys.includes(task.id) && Boolean(task.cron))
+    .map((task) => task.id);
 
   const columns: ColumnsType<SyncTask> = [
     {
@@ -79,19 +86,22 @@ export function TasksPage(props: TasksPageProps) {
     {
       title: '状态',
       key: 'enabled',
-      render: (_value: unknown, record: SyncTask) => (
-        <Select
-          size="small"
-          value={record.enabled}
-          style={{ width: 96 }}
-          disabled={props.actionsDisabled}
-          onChange={(enabled) => props.onToggleTaskEnabled(record, enabled)}
-          options={[
-            { label: '已启用', value: true },
-            { label: '已禁用', value: false },
-          ]}
-        />
-      ),
+      render: (_value: unknown, record: SyncTask) =>
+        record.cron ? (
+          <Select
+            size="small"
+            value={record.enabled}
+            style={{ width: 96 }}
+            disabled={props.actionsDisabled}
+            onChange={(enabled) => props.onToggleTaskEnabled(record, enabled)}
+            options={[
+              { label: '已启用', value: true },
+              { label: '已禁用', value: false },
+            ]}
+          />
+        ) : (
+          <Text type="secondary">仅手动</Text>
+        ),
     },
     {
       title: 'Cron',
@@ -170,6 +180,26 @@ export function TasksPage(props: TasksPageProps) {
                 })),
               ]}
             />
+            <Button
+              disabled={props.actionsDisabled || !selectedScheduledTaskIds.length}
+              loading={props.bulkUpdating}
+              onClick={() => {
+                props.onBulkUpdateTasksEnabled(selectedScheduledTaskIds, true);
+                setSelectedRowKeys([]);
+              }}
+            >
+              批量启用
+            </Button>
+            <Button
+              disabled={props.actionsDisabled || !selectedScheduledTaskIds.length}
+              loading={props.bulkUpdating}
+              onClick={() => {
+                props.onBulkUpdateTasksEnabled(selectedScheduledTaskIds, false);
+                setSelectedRowKeys([]);
+              }}
+            >
+              批量禁用
+            </Button>
             <Button icon={<ReloadOutlined />} onClick={props.onRefresh}>
               刷新
             </Button>
@@ -184,7 +214,19 @@ export function TasksPage(props: TasksPageProps) {
           </Space>
         }
       >
-        <Table rowKey="id" columns={columns} dataSource={props.tasks} pagination={pagination} />
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={props.tasks}
+          pagination={pagination}
+          rowSelection={{
+            selectedRowKeys,
+            getCheckboxProps: (record) => ({
+              disabled: !record.cron,
+            }),
+            onChange: (keys) => setSelectedRowKeys(keys),
+          }}
+        />
       </Card>
 
       <RunLogModal
