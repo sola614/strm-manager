@@ -1703,7 +1703,6 @@ async function saveRemoteItem({ service, item, currentPath, pathPrefix, progress
   const sign = item.sign || '';
   const streamUrl = buildDownloadUrl({
     domain: service.url,
-    baseUrl: service.baseUrl,
     sourcePath: currentPath,
     fileName,
     sign,
@@ -1786,18 +1785,8 @@ async function triggerCallback(callbackUrl, payload) {
   }
 }
 
-function buildDownloadUrl({ domain, baseUrl, sourcePath, fileName, sign }) {
-  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
-  const resolvedSourcePath = buildServiceSourcePath(baseUrl, sourcePath);
-  let relativeSourcePath = normalizeRemotePath(resolvedSourcePath);
-
-  if (normalizedBaseUrl !== '/' && relativeSourcePath.startsWith(`${normalizedBaseUrl}/`)) {
-    relativeSourcePath = relativeSourcePath.slice(normalizedBaseUrl.length);
-  } else if (relativeSourcePath === normalizedBaseUrl) {
-    relativeSourcePath = '/';
-  }
-
-  const parts = normalizeRemotePath(relativeSourcePath)
+function buildDownloadUrl({ domain, sourcePath, fileName, sign }) {
+  const parts = normalizeRemotePath(sourcePath)
     .split('/')
     .filter(Boolean);
 
@@ -1809,7 +1798,7 @@ function buildDownloadUrl({ domain, baseUrl, sourcePath, fileName, sign }) {
   const cleanDomain = domain.replace(/\/+$/, '');
   const dirSegment = encodedDir ? `/${encodedDir}` : '';
   const signQuery = sign ? `?sign=${encodeURIComponent(sign)}` : '';
-  return `${cleanDomain}${normalizedBaseUrl}${dirSegment}/${encodeURIComponent(fileName)}${signQuery}`;
+  return `${cleanDomain}/d${dirSegment}/${encodeURIComponent(fileName)}${signQuery}`;
 }
 
 function buildServiceSourcePath(baseUrl, sourcePath) {
