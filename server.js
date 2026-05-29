@@ -4,10 +4,24 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import Database from 'better-sqlite3';
 import cron from 'node-cron';
 import multer from 'multer';
 import packageInfo from './package.json' with { type: 'json' };
+import { createAppConfigManager } from './server/config.js';
+import { createDatabase, createSettingsStore, createTables } from './server/db.js';
+import { formatError } from './server/utils/errors.js';
+import { isSafePathPart, normalizeRemotePath } from './server/utils/paths.js';
+import { delay, now } from './server/utils/time.js';
+import {
+  clampFloat,
+  clampInteger,
+  normalizeBaseUrl,
+  normalizeExtensions,
+  normalizeUrl,
+  parseBoolean,
+  safeParseJsonArray,
+  sanitizeText,
+} from './server/utils/validators.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,23 +43,42 @@ const DEFAULT_LOG_RETENTION_DAYS = 7;
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-fs.mkdirSync(path.dirname(DATABASE_PATH), { recursive: true });
-
 const app = express();
-const db = new Database(DATABASE_PATH);
+const db = createDatabase(DATABASE_PATH);
+const { getSetting, setSetting } = createSettingsStore(db);
 const scheduledJobs = new Map();
 const activeRuns = new Set();
 let maintenanceJob = null;
 let runtimePort = ENV_PORT;
+const appConfig = createAppConfigManager({
+  getSetting,
+  setSetting,
+  envPort: ENV_PORT,
+  envDefaultStrmTargetPath: ENV_DEFAULT_STRM_TARGET_PATH,
+  databasePath: DATABASE_PATH,
+  resetAdminPassword: RESET_ADMIN_PASSWORD,
+  defaultLogCleanupEnabled: DEFAULT_LOG_CLEANUP_ENABLED,
+  defaultLogRetentionDays: DEFAULT_LOG_RETENTION_DAYS,
+  defaultTimezone: DEFAULT_TIMEZONE,
+  getRuntimePort: () => runtimePort,
+  onApply: () => rescheduleTasks(),
+});
+const {
+  applyAppConfig,
+  ensureAppSettings,
+  getAppConfigPayload,
+  getConfiguredPort,
+  getConfiguredStrmTargetPath,
+  getConfiguredTimezone,
+  getLogCleanupEnabled,
+  getLogRetentionDays,
+  normalizeAppConfigPayload,
+} = appConfig;
 
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-db.pragma('busy_timeout = 5000');
-
-createTables();
+createTables(db);
 initializeSettings();
 runtimePort = getConfiguredPort();
 startMaintenanceJobs();
@@ -444,75 +477,6 @@ function resolveDatabasePath(databasePath) {
   return path.isAbsolute(databasePath) ? databasePath : path.join(__dirname, databasePath);
 }
 
-function createTables() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS services (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      url TEXT NOT NULL,
-      token TEXT NOT NULL,
-      base_url TEXT NOT NULL,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      service_id INTEGER NOT NULL,
-      source_path TEXT NOT NULL,
-      target_path TEXT NOT NULL,
-      cron TEXT NOT NULL,
-      max_concurrency INTEGER NOT NULL DEFAULT 5,
-      download_extensions TEXT NOT NULL DEFAULT 'mp4,mkv',
-      download_subtitles INTEGER NOT NULL DEFAULT 0,
-      request_delay_seconds REAL NOT NULL DEFAULT 5,
-      overwrite_existing INTEGER NOT NULL DEFAULT 0,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      notify_enabled INTEGER NOT NULL DEFAULT 0,
-      callback_url TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      last_run_at TEXT,
-      FOREIGN KEY(service_id) REFERENCES services(id) ON DELETE RESTRICT
-    );
-
-    CREATE TABLE IF NOT EXISTS runs (
-      id TEXT PRIMARY KEY,
-      task_id TEXT NOT NULL,
-      task_name TEXT NOT NULL,
-      service_id TEXT NOT NULL,
-      service_name TEXT NOT NULL,
-      trigger_type TEXT NOT NULL,
-      started_at TEXT NOT NULL,
-      completed_at TEXT,
-      status TEXT NOT NULL,
-      message TEXT NOT NULL,
-      details TEXT NOT NULL DEFAULT '[]',
-      processed_count INTEGER NOT NULL DEFAULT 0,
-      subtitle_count INTEGER NOT NULL DEFAULT 0,
-      skipped_count INTEGER NOT NULL DEFAULT 0,
-      failure_count INTEGER NOT NULL DEFAULT 0,
-      FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-  `);
-
-  addColumnIfMissing('services', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
-  addColumnIfMissing('tasks', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
-}
-
-function addColumnIfMissing(tableName, columnName, columnDefinition) {
-  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
-  if (columns.some((column) => column.name === columnName)) return;
-  db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`).run();
-}
-
 function initializeSettings() {
   if (!getSetting('admin_password_hash')) {
     setSetting('admin_password_hash', hashValue(DEFAULT_ADMIN_PASSWORD));
@@ -534,26 +498,7 @@ function initializeSettings() {
     setSetting('session_token_hash', '');
   }
 
-  if (!getSetting('app_port')) {
-    setSetting('app_port', String(ENV_PORT));
-  }
-
-  if (!getSetting('default_strm_target_path')) {
-    setSetting('default_strm_target_path', ENV_DEFAULT_STRM_TARGET_PATH);
-  }
-
-  if (!getSetting('log_cleanup_enabled')) {
-    setSetting('log_cleanup_enabled', DEFAULT_LOG_CLEANUP_ENABLED ? '1' : '0');
-  }
-
-  if (!getSetting('log_retention_days')) {
-    setSetting('log_retention_days', String(DEFAULT_LOG_RETENTION_DAYS));
-  }
-
-  if (!getSetting('timezone')) {
-    setSetting('timezone', normalizeTimezone(process.env.TZ) || DEFAULT_TIMEZONE);
-  }
-
+  ensureAppSettings();
   applyAppConfig(getAppConfigPayload());
 }
 
@@ -563,118 +508,6 @@ function hashValue(value) {
 
 function generateId(prefix) {
   return `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-}
-
-function now() {
-  return new Date().toISOString();
-}
-
-function formatError(error) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function getSetting(key) {
-  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
-  return row ? row.value : null;
-}
-
-function setSetting(key, value) {
-  db.prepare(`
-    INSERT INTO settings (key, value)
-    VALUES (?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `).run(key, value);
-}
-
-function getConfiguredPort() {
-  return clampInteger(getSetting('app_port') || ENV_PORT, 1, 65535);
-}
-
-function getConfiguredStrmTargetPath() {
-  return sanitizeText(getSetting('default_strm_target_path') || ENV_DEFAULT_STRM_TARGET_PATH) || ENV_DEFAULT_STRM_TARGET_PATH;
-}
-
-function getLogCleanupEnabled() {
-  return parseBoolean(getSetting('log_cleanup_enabled') ?? (DEFAULT_LOG_CLEANUP_ENABLED ? '1' : '0'));
-}
-
-function getLogRetentionDays() {
-  return clampInteger(getSetting('log_retention_days') || DEFAULT_LOG_RETENTION_DAYS, 1, 3650);
-}
-
-function getConfiguredTimezone() {
-  return normalizeTimezone(getSetting('timezone') || process.env.TZ) || DEFAULT_TIMEZONE;
-}
-
-function getAppConfigPayload() {
-  return {
-    port: getConfiguredPort(),
-    runtimePort: runtimePort || ENV_PORT,
-    defaultStrmTargetPath: getConfiguredStrmTargetPath(),
-    logCleanupEnabled: getLogCleanupEnabled(),
-    logRetentionDays: getLogRetentionDays(),
-    timezone: getConfiguredTimezone(),
-    databasePath: DATABASE_PATH,
-    nodeEnv: process.env.NODE_ENV || 'development',
-    resetAdminPasswordEnabled: Boolean(RESET_ADMIN_PASSWORD),
-  };
-}
-
-function normalizeAppConfigPayload(input, fallback = getAppConfigPayload()) {
-  const rawPort = input?.port ?? fallback.port;
-  const rawTargetPath = input?.defaultStrmTargetPath ?? input?.default_strm_target_path ?? fallback.defaultStrmTargetPath;
-  const rawLogCleanupEnabled = input?.logCleanupEnabled ?? input?.log_cleanup_enabled ?? fallback.logCleanupEnabled;
-  const rawLogRetentionDays = input?.logRetentionDays ?? input?.log_retention_days ?? fallback.logRetentionDays;
-  const rawTimezone = input?.timezone ?? fallback.timezone;
-
-  const port = Number.parseInt(String(rawPort), 10);
-  const defaultStrmTargetPath = sanitizeText(rawTargetPath);
-  const logRetentionDays = Number.parseInt(String(rawLogRetentionDays), 10);
-  const logCleanupEnabled = parseBoolean(rawLogCleanupEnabled);
-  const timezone = normalizeTimezone(rawTimezone);
-  const errors = [];
-
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    errors.push('PORT 必须是 1 到 65535 之间的整数。');
-  }
-
-  if (!defaultStrmTargetPath) {
-    errors.push('STRM 默认输出目录不能为空。');
-  }
-
-  if (!Number.isInteger(logRetentionDays) || logRetentionDays < 1 || logRetentionDays > 3650) {
-    errors.push('日志保留天数必须是 1 到 3650 之间的整数。');
-  }
-
-  if (!timezone) {
-    errors.push('时区不能为空，仅支持 IANA 时区名称，例如 Asia/Shanghai。');
-  } else if (!isValidTimezone(timezone)) {
-    errors.push(`时区 ${timezone} 无效，请使用 IANA 时区名称，例如 Asia/Shanghai。`);
-  }
-
-  return {
-    errors,
-    config: {
-      port: Number.isInteger(port) ? port : fallback.port,
-      defaultStrmTargetPath: defaultStrmTargetPath || fallback.defaultStrmTargetPath,
-      logCleanupEnabled,
-      logRetentionDays: Number.isInteger(logRetentionDays) ? logRetentionDays : fallback.logRetentionDays,
-      timezone: timezone || fallback.timezone,
-    },
-  };
-}
-
-function applyAppConfig(config) {
-  setSetting('app_port', String(clampInteger(config.port, 1, 65535)));
-  setSetting(
-    'default_strm_target_path',
-    sanitizeText(config.defaultStrmTargetPath) || ENV_DEFAULT_STRM_TARGET_PATH,
-  );
-  setSetting('log_cleanup_enabled', config.logCleanupEnabled ? '1' : '0');
-  setSetting('log_retention_days', String(clampInteger(config.logRetentionDays, 1, 3650)));
-  setSetting('timezone', normalizeTimezone(config.timezone) || DEFAULT_TIMEZONE);
-  process.env.TZ = getConfiguredTimezone();
-  rescheduleTasks();
 }
 
 function shouldForcePasswordChange() {
@@ -1874,19 +1707,9 @@ function isSubtitleFile(fileName) {
   return hasExtension(fileName, buildExtensionSet(DEFAULT_SUBTITLE_EXTENSIONS));
 }
 
-function normalizeRemotePath(value) {
-  const normalized = String(value || '').replace(/\\/g, '/').replace(/\/+/g, '/').trim();
-  if (!normalized) return '/';
-  return normalized.startsWith('/') ? normalized : `/${normalized}`;
-}
-
 function joinRemotePath(basePath, childName) {
   if (!basePath || basePath === '/') return `/${childName}`;
   return `${basePath.replace(/\/+$/, '')}/${childName}`;
-}
-
-function isSafePathPart(name) {
-  return Boolean(name) && name !== '.' && name !== '..' && !/[\\/]/.test(name);
 }
 
 async function runWithConcurrency(items, concurrency, handler) {
@@ -1902,80 +1725,6 @@ async function runWithConcurrency(items, concurrency, handler) {
   });
 
   await Promise.all(workers);
-}
-
-function sanitizeText(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeUrl(value) {
-  return sanitizeText(value).replace(/\/+$/, '');
-}
-
-function normalizeBaseUrl(value) {
-  const trimmed = sanitizeText(value) || '/';
-  const normalized = trimmed.replace(/\\/g, '/');
-  const withLeadingSlash = normalized.startsWith('/') ? normalized : `/${normalized}`;
-  return withLeadingSlash.replace(/\/+$/, '') || '/';
-}
-
-function normalizeExtensions(value) {
-  return String(value || '')
-    .split(',')
-    .map((entry) => entry.trim().toLowerCase().replace(/^\./, ''))
-    .filter(Boolean)
-    .join(',');
-}
-
-function normalizeTimezone(value) {
-  return sanitizeText(value).replace(/\s+/g, '');
-}
-
-function isValidTimezone(value) {
-  try {
-    new Intl.DateTimeFormat('zh-CN', { timeZone: value }).format(new Date());
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function clampInteger(value, min, max) {
-  const parsed = Number.parseInt(String(value), 10);
-  if (Number.isNaN(parsed)) return min;
-  return Math.max(min, Math.min(max, parsed));
-}
-
-function clampFloat(value, min, max) {
-  const parsed = Number.parseFloat(String(value));
-  if (Number.isNaN(parsed)) return min;
-  return Math.max(min, Math.min(max, parsed));
-}
-
-function parseBoolean(value) {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value !== 0;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
-    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
-  }
-  return Boolean(value);
-}
-
-function safeParseJsonArray(value) {
-  try {
-    const parsed = JSON.parse(value || '[]');
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function delay(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 function buildConfigYaml() {
