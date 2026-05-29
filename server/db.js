@@ -66,6 +66,18 @@ export function createTables(db) {
       FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS run_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id TEXT NOT NULL,
+      line_index INTEGER NOT NULL,
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(run_id) REFERENCES runs(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_run_logs_run_id_line_index
+      ON run_logs(run_id, line_index);
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -74,12 +86,47 @@ export function createTables(db) {
 
   addColumnIfMissing(db, 'services', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
   addColumnIfMissing(db, 'tasks', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
+  migrateRunDetailsToLogs(db);
 }
 
 function addColumnIfMissing(db, tableName, columnName, columnDefinition) {
   const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
   if (columns.some((column) => column.name === columnName)) return;
   db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`).run();
+}
+
+function migrateRunDetailsToLogs(db) {
+  const rows = db.prepare(`
+    SELECT id, details
+    FROM runs
+    WHERE details IS NOT NULL
+      AND details != '[]'
+      AND NOT EXISTS (
+        SELECT 1 FROM run_logs WHERE run_logs.run_id = runs.id
+      )
+  `).all();
+
+  if (!rows.length) return;
+
+  const insert = db.prepare(`
+    INSERT INTO run_logs (run_id, line_index, message, created_at)
+    VALUES (?, ?, ?, ?)
+  `);
+  const tx = db.transaction(() => {
+    for (const row of rows) {
+      let details = [];
+      try {
+        details = JSON.parse(row.details || '[]');
+      } catch {
+        details = [];
+      }
+
+      details.forEach((message, index) => {
+        insert.run(row.id, index, String(message || ''), new Date().toISOString());
+      });
+    }
+  });
+  tx();
 }
 
 export function createSettingsStore(db) {

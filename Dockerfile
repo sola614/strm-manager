@@ -17,7 +17,7 @@ FROM node:24-alpine AS runner
 
 WORKDIR /app
 
-RUN apk add --no-cache libstdc++
+RUN apk add --no-cache libstdc++ curl
 
 ENV NODE_ENV=production
 ENV PORT=4173
@@ -32,5 +32,8 @@ COPY --from=build /app/dist ./dist
 RUN mkdir -p /app/data
 
 EXPOSE 4173
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null || exit 1
 
 CMD ["node", "server.js"]

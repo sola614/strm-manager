@@ -2,8 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import cron from 'node-cron';
 import { generateId } from '../utils/id.js';
-import { isSafePathPart, normalizeRemotePath } from '../utils/paths.js';
+import { isSafePathPart } from '../utils/paths.js';
 import { delay, now } from '../utils/time.js';
+import {
+  buildApiUrl,
+  buildDownloadUrl,
+  buildExtensionSet,
+  buildServiceSourcePath,
+  hasExtension,
+} from './openlistUrl.js';
 
 export function createTaskRunner(options) {
   const {
@@ -19,6 +26,7 @@ export function createTaskRunner(options) {
     updateTaskLastRunAt,
     createRunRecord,
     updateRunRecord,
+    appendRunLog,
     broadcastRunSnapshot,
     startMaintenanceJobs,
   } = options;
@@ -198,7 +206,7 @@ export function createTaskRunner(options) {
           details,
           finishedAt: completedAt,
         });
-        details.push(`回调通知已发送到 ${task.callbackUrl}`);
+        progress.addDetail(`回调通知已发送到 ${task.callbackUrl}`);
       }
 
       progress.flush();
@@ -248,6 +256,11 @@ export function createTaskRunner(options) {
     return {
       details,
       summary,
+      addDetail(message) {
+        details.push(message);
+        appendRunLog(runId, message);
+        this.changed();
+      },
       changed() {
         if (timer) return;
         timer = setTimeout(() => {
@@ -388,14 +401,12 @@ export function createTaskRunner(options) {
 
       if (!written) {
         progress.summary.skippedCount += 1;
-        progress.details.push(`${fileName} 字幕已存在，跳过下载`);
-        progress.changed();
+        progress.addDetail(`${fileName} 字幕已存在，跳过下载`);
         return;
       }
 
       progress.summary.subtitleCount += 1;
-      progress.details.push(`${fileName} 字幕下载成功`);
-      progress.changed();
+      progress.addDetail(`${fileName} 字幕下载成功`);
       return;
     }
 
@@ -405,29 +416,12 @@ export function createTaskRunner(options) {
     const written = await writeOutputFile(savePath, streamUrl, task.overwriteExisting, 'utf8');
     if (!written) {
       progress.summary.skippedCount += 1;
-      progress.details.push(`${path.basename(savePath)} 已存在，跳过创建`);
-      progress.changed();
+      progress.addDetail(`${path.basename(savePath)} 已存在，跳过创建`);
       return;
     }
 
     progress.summary.processedCount += 1;
-    progress.details.push(`${path.basename(savePath)} 创建成功`);
-    progress.changed();
-  }
-
-  function buildServiceSourcePath(baseUrl, sourcePath) {
-    const normalizedBase = normalizeRemotePath(baseUrl || '/');
-    const normalizedSource = normalizeRemotePath(sourcePath || '/');
-
-    if (normalizedBase === '/' || normalizedBase === normalizedSource) {
-      return normalizedSource;
-    }
-
-    if (normalizedSource === '/') {
-      return normalizedBase;
-    }
-
-    return normalizeRemotePath(`${normalizedBase}/${normalizedSource}`);
+    progress.addDetail(`${path.basename(savePath)} 创建成功`);
   }
 
   return {
@@ -479,40 +473,6 @@ async function triggerCallback(callbackUrl, payload) {
   if (!response.ok) {
     throw new Error(`回调通知失败：${response.status}`);
   }
-}
-
-function buildDownloadUrl({ domain, sourcePath, fileName, sign }) {
-  const parts = normalizeRemotePath(sourcePath)
-    .split('/')
-    .filter(Boolean);
-
-  if (parts.length > 0 && parts[parts.length - 1] === fileName) {
-    parts.pop();
-  }
-
-  const encodedDir = parts.map((part) => encodeURIComponent(part)).join('/');
-  const cleanDomain = domain.replace(/\/+$/, '');
-  const dirSegment = encodedDir ? `/${encodedDir}` : '';
-  const signQuery = sign ? `?sign=${encodeURIComponent(sign)}` : '';
-  return `${cleanDomain}/d${dirSegment}/${encodeURIComponent(fileName)}${signQuery}`;
-}
-
-function buildApiUrl(domain, pathname) {
-  return `${domain.replace(/\/+$/, '')}${pathname}`;
-}
-
-function buildExtensionSet(value) {
-  return new Set(
-    String(value || '')
-      .split(',')
-      .map((item) => item.trim().toLowerCase().replace(/^\./, ''))
-      .filter(Boolean),
-  );
-}
-
-function hasExtension(fileName, extensionSet) {
-  const extension = path.extname(fileName || '').replace('.', '').toLowerCase();
-  return extensionSet.has(extension);
 }
 
 async function readJsonResponse(response) {

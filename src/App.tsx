@@ -1,6 +1,6 @@
 import { App as AntdApp, ConfigProvider, Modal } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   bulkDeleteRuns,
   bulkDeleteManagedFiles,
@@ -40,15 +40,7 @@ import { PasswordModal } from './modules/admin/forms/PasswordModal';
 import { ServiceDrawer } from './modules/admin/forms/ServiceDrawer';
 import { TaskDrawer } from './modules/admin/forms/TaskDrawer';
 import { AdminShell } from './modules/admin/layout/AdminShell';
-import { BackupPage } from './modules/admin/pages/BackupPage';
-import { DashboardPage } from './modules/admin/pages/DashboardPage';
-import { FilesPage } from './modules/admin/pages/FilesPage';
 import { LoginPage } from './modules/admin/pages/LoginPage';
-import { RunDetailPage } from './modules/admin/pages/RunDetailPage';
-import { RunsPage } from './modules/admin/pages/RunsPage';
-import { ServicesPage } from './modules/admin/pages/ServicesPage';
-import { SettingsPage } from './modules/admin/pages/SettingsPage';
-import { TasksPage } from './modules/admin/pages/TasksPage';
 import { getServiceDisplayName } from './modules/admin/utils';
 import type {
   ActiveView,
@@ -64,6 +56,14 @@ import type {
 } from './types';
 
 const validViews: ActiveView[] = ['dashboard', 'services', 'tasks', 'files', 'runs', 'runDetail', 'backup', 'settings'];
+const BackupPage = lazy(() => import('./modules/admin/pages/BackupPage').then((module) => ({ default: module.BackupPage })));
+const DashboardPage = lazy(() => import('./modules/admin/pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
+const FilesPage = lazy(() => import('./modules/admin/pages/FilesPage').then((module) => ({ default: module.FilesPage })));
+const RunDetailPage = lazy(() => import('./modules/admin/pages/RunDetailPage').then((module) => ({ default: module.RunDetailPage })));
+const RunsPage = lazy(() => import('./modules/admin/pages/RunsPage').then((module) => ({ default: module.RunsPage })));
+const ServicesPage = lazy(() => import('./modules/admin/pages/ServicesPage').then((module) => ({ default: module.ServicesPage })));
+const SettingsPage = lazy(() => import('./modules/admin/pages/SettingsPage').then((module) => ({ default: module.SettingsPage })));
+const TasksPage = lazy(() => import('./modules/admin/pages/TasksPage').then((module) => ({ default: module.TasksPage })));
 
 function getViewFromLocation(): ActiveView {
   if (typeof window === 'undefined') return 'dashboard';
@@ -1058,7 +1058,9 @@ function AdminApp() {
         onOpenPassword={() => setPasswordOpen(true)}
         onLogout={handleLogout}
       >
-        {pageContent}
+        <Suspense fallback={null}>
+          {pageContent}
+        </Suspense>
       </AdminShell>
 
       <ServiceDrawer

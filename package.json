@@ -1,6 +1,6 @@
 {
   "name": "strm-manager",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,6 +11,7 @@
     "dev:client": "vite",
     "dev:server": "node server.js",
     "build": "tsc && vite build",
+    "test": "node --test server/**/*.test.js",
     "preview": "vite preview",
     "start": "node server.js",
     "serve": "npm run start"
