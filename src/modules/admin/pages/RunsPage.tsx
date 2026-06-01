@@ -12,11 +12,13 @@ interface RunsPageProps {
   tasks: SyncTask[];
   serviceFilter: string;
   taskFilter: string;
+  statusFilter: TaskRun['status'] | 'all';
   selectedRun: TaskRun | null;
   deletingRunIds: string[];
   bulkDeleting: boolean;
   onServiceFilterChange: (value: string) => void;
   onTaskFilterChange: (value: string) => void;
+  onStatusFilterChange: (value: TaskRun['status'] | 'all') => void;
   onRefresh: () => void;
   onViewRunDetail: (run: TaskRun | null) => void;
   onDeleteRun: (run: TaskRun) => void;
@@ -32,9 +34,10 @@ export function RunsPage(props: RunsPageProps) {
       props.runs.filter((run) => {
         const matchService = props.serviceFilter === 'all' || run.serviceId === props.serviceFilter;
         const matchTask = props.taskFilter === 'all' || run.taskId === props.taskFilter;
-        return matchService && matchTask;
+        const matchStatus = props.statusFilter === 'all' || run.status === props.statusFilter;
+        return matchService && matchTask && matchStatus;
       }),
-    [props.runs, props.serviceFilter, props.taskFilter],
+    [props.runs, props.serviceFilter, props.statusFilter, props.taskFilter],
   );
 
   const visibleTasks = useMemo(
@@ -178,6 +181,18 @@ export function RunsPage(props: RunsPageProps) {
                   label: getServiceDisplayName(service),
                   value: service.id,
                 })),
+              ]}
+            />
+            <Select
+              value={props.statusFilter}
+              style={{ width: 150 }}
+              onChange={props.onStatusFilterChange}
+              options={[
+                { label: '全部状态', value: 'all' },
+                { label: '运行中', value: 'running' },
+                { label: '成功', value: 'success' },
+                { label: '失败', value: 'error' },
+                { label: '已跳过', value: 'skipped' },
               ]}
             />
             <Select

@@ -336,10 +336,10 @@ export function TaskDrawer(props: TaskDrawerProps) {
             <Form.Item
               label="每次下载请求延时"
               name="requestDelaySeconds"
-              tooltip="每次请求完成后等待多少秒再发起下一次请求。"
+              tooltip="每次请求接口前等待多少秒再发起请求。支持固定秒数或范围，例如 5 或 5-10。"
               rules={[{ required: true, message: '请输入请求延时秒数' }]}
             >
-              <InputNumber min={0} max={600} style={{ width: '100%' }} />
+              <Input placeholder="5 或 5-10" />
             </Form.Item>
           </Col>
         </Row>

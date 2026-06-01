@@ -1,8 +1,8 @@
 import cron from 'node-cron';
 import { now } from '../utils/time.js';
 import {
-  clampFloat,
   clampInteger,
+  normalizeDelaySecondsExpression,
   normalizeExtensions,
   parseBoolean,
   sanitizeText,
@@ -20,7 +20,7 @@ export function normalizeTaskRow(row) {
     maxConcurrency: Number(row.max_concurrency),
     downloadExtensions: row.download_extensions,
     downloadSubtitles: Boolean(row.download_subtitles),
-    requestDelaySeconds: Number(row.request_delay_seconds),
+    requestDelaySeconds: String(row.request_delay_seconds ?? '5'),
     overwriteExisting: Boolean(row.overwrite_existing),
     enabled: Boolean(row.enabled),
     notifyEnabled: Boolean(row.notify_enabled),
@@ -190,11 +190,12 @@ export function createTaskStore({ db, getServiceById, scheduleTask, stopSchedule
     const downloadSubtitles = Boolean(
       input?.downloadSubtitles ?? input?.download_subtitles ?? existing?.downloadSubtitles ?? false,
     );
-    const requestDelaySeconds = clampFloat(
+    const requestDelayResult = normalizeDelaySecondsExpression(
       input?.requestDelaySeconds ?? input?.request_delay_seconds ?? existing?.requestDelaySeconds ?? 5,
       0,
       600,
     );
+    const requestDelaySeconds = requestDelayResult.value;
     const overwriteExisting = Boolean(
       input?.overwriteExisting ?? input?.overwrite_existing ?? existing?.overwriteExisting ?? false,
     );
@@ -216,6 +217,7 @@ export function createTaskStore({ db, getServiceById, scheduleTask, stopSchedule
     }
     if (!targetPath) errors.push('目标输出目录不能为空。');
     if (!downloadExtensions) errors.push('自定义下载后缀不能为空。');
+    if (requestDelayResult.error) errors.push(requestDelayResult.error);
     if (cronExpr && !cron.validate(cronExpr)) errors.push('Cron 表达式无效。');
     if (notifyEnabled && !callbackUrl) errors.push('开启通知后必须填写回调地址。');
     if (callbackUrl) {

@@ -46,6 +46,43 @@ export function clampFloat(value, min, max) {
   return Math.max(min, Math.min(max, parsed));
 }
 
+export function normalizeDelaySecondsExpression(value, min, max, fallback = '5') {
+  const raw = String(value ?? fallback).trim().replace(/\s+/g, '');
+  const expression = raw || String(fallback);
+  const singleMatch = expression.match(/^\d+(?:\.\d+)?$/);
+  const rangeMatch = expression.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+
+  if (!singleMatch && !rangeMatch) {
+    return {
+      value: String(fallback),
+      error: '请求延时仅支持单个秒数或范围，例如 5 或 5-10。',
+    };
+  }
+
+  const numbers = rangeMatch
+    ? [Number(rangeMatch[1]), Number(rangeMatch[2])]
+    : [Number(expression)];
+
+  if (numbers.some((number) => number < min || number > max)) {
+    return {
+      value: expression,
+      error: `请求延时必须在 ${min} 到 ${max} 秒之间。`,
+    };
+  }
+
+  if (rangeMatch && numbers[0] > numbers[1]) {
+    return {
+      value: expression,
+      error: '请求延时范围的开始值不能大于结束值。',
+    };
+  }
+
+  return {
+    value: expression,
+    error: null,
+  };
+}
+
 export function parseBoolean(value) {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value !== 0;

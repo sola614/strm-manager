@@ -31,7 +31,7 @@ export const defaultTaskForm: SyncTaskFormValues = {
   maxConcurrency: 5,
   downloadExtensions: 'mp4,mkv',
   downloadSubtitles: false,
-  requestDelaySeconds: 5,
+  requestDelaySeconds: '5',
   overwriteExisting: false,
   enabled: true,
   notifyEnabled: false,

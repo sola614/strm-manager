@@ -111,6 +111,127 @@ button {
   padding: 28px !important;
 }
 
+.dashboard-page {
+  width: 100%;
+}
+
+.dashboard-chart-card .ant-card-body {
+  min-height: 220px;
+}
+
+.dashboard-status-chart {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  min-height: 176px;
+}
+
+.status-donut {
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.status-donut-core {
+  width: 94px;
+  height: 94px;
+  border-radius: 50%;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  box-shadow: inset 0 0 0 1px #edf1f7;
+}
+
+.status-donut-core .ant-typography:first-child {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.status-legend {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.status-legend-item {
+  display: grid;
+  grid-template-columns: 12px minmax(72px, 1fr) 40px 52px;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.run-trend-chart {
+  height: 188px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(32px, 1fr));
+  align-items: end;
+  gap: 14px;
+}
+
+.trend-column {
+  min-width: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  justify-items: center;
+  gap: 6px;
+}
+
+.trend-bar-wrap {
+  width: 100%;
+  min-height: 116px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid #edf1f7;
+}
+
+.trend-bar {
+  width: 24px;
+  min-height: 0;
+  border-radius: 7px 7px 0 0;
+  background: #eef2f8;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.trend-segment {
+  display: block;
+  width: 100%;
+}
+
+.trend-count {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.trend-label {
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.dashboard-run-item {
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.dashboard-run-item:hover {
+  background: #f7fbff;
+}
+
 .module-card,
 .metric-card,
 .login-card {

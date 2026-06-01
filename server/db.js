@@ -36,7 +36,7 @@ export function createTables(db) {
       max_concurrency INTEGER NOT NULL DEFAULT 5,
       download_extensions TEXT NOT NULL DEFAULT 'mp4,mkv',
       download_subtitles INTEGER NOT NULL DEFAULT 0,
-      request_delay_seconds REAL NOT NULL DEFAULT 5,
+      request_delay_seconds TEXT NOT NULL DEFAULT '5',
       overwrite_existing INTEGER NOT NULL DEFAULT 0,
       enabled INTEGER NOT NULL DEFAULT 1,
       notify_enabled INTEGER NOT NULL DEFAULT 0,

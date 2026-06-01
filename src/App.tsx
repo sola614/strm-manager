@@ -116,6 +116,7 @@ function AdminApp() {
   const [fileParentDirectory, setFileParentDirectory] = useState<string | null>(null);
   const [runServiceFilter, setRunServiceFilter] = useState<string>('all');
   const [runTaskFilter, setRunTaskFilter] = useState<string>('all');
+  const [runStatusFilter, setRunStatusFilter] = useState<TaskRun['status'] | 'all'>('all');
   const [loginPassword, setLoginPassword] = useState('');
   const [setupRequired, setSetupRequired] = useState(false);
   const [setupPassword, setSetupPassword] = useState('');
@@ -339,6 +340,7 @@ function AdminApp() {
       setSelectedRunId(run.id);
       setRunServiceFilter(run.serviceId);
       setRunTaskFilter(run.taskId);
+      setRunStatusFilter(run.status);
     }
 
     setLatestLogModalOpen(false);
@@ -472,6 +474,7 @@ function AdminApp() {
     setFileParentDirectory(null);
     setRunServiceFilter('all');
     setRunTaskFilter('all');
+    setRunStatusFilter('all');
     changeView('dashboard');
     message.success('已退出登录。');
   }
@@ -930,6 +933,7 @@ function AdminApp() {
         onEditService={openEditService}
         onRefreshRuns={refreshRuns}
         onSwitchView={changeView}
+        onViewRunDetail={openRunDetail}
       />
     );
   } else if (activeView === 'services') {
@@ -1005,6 +1009,7 @@ function AdminApp() {
         tasks={tasks}
         serviceFilter={runServiceFilter}
         taskFilter={runTaskFilter}
+        statusFilter={runStatusFilter}
         selectedRun={selectedRun}
         deletingRunIds={deletingRunIds}
         bulkDeleting={bulkDeletingRuns}
@@ -1013,6 +1018,7 @@ function AdminApp() {
           setRunTaskFilter('all');
         }}
         onTaskFilterChange={setRunTaskFilter}
+        onStatusFilterChange={setRunStatusFilter}
         onRefresh={refreshRunsAndTasks}
         onViewRunDetail={openRunDetail}
         onDeleteRun={handleDeleteRun}

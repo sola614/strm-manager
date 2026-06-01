@@ -27,7 +27,7 @@ export interface SyncTask {
   maxConcurrency: number;
   downloadExtensions: string;
   downloadSubtitles: boolean;
-  requestDelaySeconds: number;
+  requestDelaySeconds: string;
   overwriteExisting: boolean;
   enabled: boolean;
   notifyEnabled: boolean;
@@ -47,7 +47,7 @@ export interface SyncTaskFormValues {
   maxConcurrency: number;
   downloadExtensions: string;
   downloadSubtitles: boolean;
-  requestDelaySeconds: number;
+  requestDelaySeconds: string;
   overwriteExisting: boolean;
   enabled: boolean;
   notifyEnabled: boolean;
@@ -169,7 +169,7 @@ export interface BackupPayload {
     maxConcurrency: number;
     downloadExtensions: string;
     downloadSubtitles: boolean;
-    requestDelaySeconds: number;
+    requestDelaySeconds: string;
     overwriteExisting: boolean;
     enabled: boolean;
     notifyEnabled: boolean;

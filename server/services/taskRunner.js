@@ -257,8 +257,9 @@ export function createTaskRunner(options) {
       details,
       summary,
       addDetail(message) {
-        details.push(message);
-        appendRunLog(runId, message);
+        const timedMessage = `${formatRunLogTimestamp(getConfiguredTimezone())} ${message}`;
+        details.push(timedMessage);
+        appendRunLog(runId, timedMessage);
         this.changed();
       },
       changed() {
@@ -279,7 +280,7 @@ export function createTaskRunner(options) {
   }
 
   async function getFileInfo({ service, filePath, pathPrefix, progress, task, downloadExtensionSet }) {
-    const response = await fetch(buildApiUrl(service.url, '/api/fs/get'), {
+    const response = await fetchWithRequestDelay(task, buildApiUrl(service.url, '/api/fs/get'), {
       method: 'POST',
       headers: {
         Authorization: service.token,
@@ -314,7 +315,7 @@ export function createTaskRunner(options) {
     const perPage = 1000;
 
     while (true) {
-      const response = await fetch(buildApiUrl(service.url, '/api/fs/list'), {
+      const response = await fetchWithRequestDelay(task, buildApiUrl(service.url, '/api/fs/list'), {
         method: 'POST',
         headers: {
           Authorization: service.token,
@@ -380,14 +381,10 @@ export function createTaskRunner(options) {
       sign,
     });
 
-    if (task.requestDelaySeconds > 0) {
-      await delay(task.requestDelaySeconds * 1000);
-    }
-
     if (isSubtitleFile(fileName) && task.downloadSubtitles) {
       const subtitlePath = path.join(saveDir, fileName);
 
-      const response = await fetch(streamUrl);
+      const response = await fetchWithRequestDelay(task, streamUrl);
       if (!response.ok) {
         throw new Error(`字幕下载失败：${response.status}`);
       }
@@ -473,6 +470,47 @@ async function triggerCallback(callbackUrl, payload) {
   if (!response.ok) {
     throw new Error(`回调通知失败：${response.status}`);
   }
+}
+
+async function fetchWithRequestDelay(task, input, init = undefined) {
+  const requestDelaySeconds = getRequestDelaySeconds(task?.requestDelaySeconds);
+  if (requestDelaySeconds > 0) {
+    await delay(requestDelaySeconds * 1000);
+  }
+
+  return fetch(input, init);
+}
+
+function getRequestDelaySeconds(value) {
+  const expression = String(value ?? '0').trim().replace(/\s+/g, '');
+  const rangeMatch = expression.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+  if (rangeMatch) {
+    const min = Number(rangeMatch[1]);
+    const max = Number(rangeMatch[2]);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
+    const lower = Math.min(min, max);
+    const upper = Math.max(min, max);
+    return lower + Math.random() * (upper - lower);
+  }
+
+  const parsed = Number(expression);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatRunLogTimestamp(timezone) {
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+
+  const valueOf = (type) => parts.find((part) => part.type === type)?.value || '';
+  return `${valueOf('year')}.${valueOf('month')}.${valueOf('day')} ${valueOf('hour')}:${valueOf('minute')}:${valueOf('second')}`;
 }
 
 async function readJsonResponse(response) {
