@@ -280,7 +280,13 @@ export function createTaskRunner(options) {
   }
 
   async function getFileInfo({ service, filePath, pathPrefix, progress, task, downloadExtensionSet }) {
-    const response = await fetchWithRequestDelay(task, buildApiUrl(service.url, '/api/fs/get'), {
+    // 在文件信息请求前应用延时
+    const requestDelaySeconds = getRequestDelaySeconds(task?.requestDelaySeconds);
+    if (requestDelaySeconds > 0) {
+      await delay(requestDelaySeconds * 1000);
+    }
+
+    const response = await fetch(buildApiUrl(service.url, '/api/fs/get'), {
       method: 'POST',
       headers: {
         Authorization: service.token,
@@ -312,10 +318,16 @@ export function createTaskRunner(options) {
 
   async function handleGetList({ service, dirPath, pathPrefix = '', progress, task, downloadExtensionSet }) {
     let page = 1;
-    const perPage = 1000;
+    const perPage = task.maxConcurrency || 5;
 
     while (true) {
-      const response = await fetchWithRequestDelay(task, buildApiUrl(service.url, '/api/fs/list'), {
+      // 在请求列表前应用延时
+      const requestDelaySeconds = getRequestDelaySeconds(task?.requestDelaySeconds);
+      if (requestDelaySeconds > 0) {
+        await delay(requestDelaySeconds * 1000);
+      }
+
+      const response = await fetch(buildApiUrl(service.url, '/api/fs/list'), {
         method: 'POST',
         headers: {
           Authorization: service.token,
@@ -384,7 +396,7 @@ export function createTaskRunner(options) {
     if (isSubtitleFile(fileName) && task.downloadSubtitles) {
       const subtitlePath = path.join(saveDir, fileName);
 
-      const response = await fetchWithRequestDelay(task, streamUrl);
+      const response = await fetch(streamUrl);
       if (!response.ok) {
         throw new Error(`字幕下载失败：${response.status}`);
       }
