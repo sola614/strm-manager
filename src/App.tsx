@@ -164,8 +164,6 @@ function AdminApp() {
     return tasks.filter((task) => task.serviceId === serviceFilter);
   }, [serviceFilter, tasks]);
 
-  const hasRunningRuns = runs.some((run) => run.status === 'running');
-
   useEffect(() => {
     initializeAuthState().finally(() => setLoading(false));
   }, []);
@@ -244,36 +242,6 @@ function AdminApp() {
 
     refreshCurrentView();
   }, [activeView, user]);
-
-  useEffect(() => {
-    if (!user || (!hasRunningRuns && selectedRun?.status !== 'running')) return;
-
-    let cancelled = false;
-    const pollRuns = async () => {
-      try {
-        const [nextRuns, nextTasks, nextSelectedRun] = await Promise.all([
-          getRuns(),
-          getTasks(),
-          activeView === 'runDetail' && selectedRunId ? getRun(selectedRunId) : Promise.resolve(null),
-        ]);
-        if (!cancelled) {
-          setRuns(nextRuns);
-          setTasks(nextTasks);
-          if (nextSelectedRun) {
-            setSelectedRun(nextSelectedRun);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to refresh running task state:', error);
-      }
-    };
-
-    const timer = window.setInterval(pollRuns, 3000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [activeView, hasRunningRuns, selectedRun?.status, selectedRunId, user]);
 
   useEffect(() => {
     if (selectedRun) {
@@ -398,6 +366,33 @@ function AdminApp() {
     setRuns(nextRuns);
     setTasks(nextTasks);
     return nextRuns;
+  }
+
+  function resetTaskFilters() {
+    setServiceFilter('all');
+  }
+
+  function resetRunFilters() {
+    setRunServiceFilter('all');
+    setRunStatusFilter('all');
+    setRunTaskFilter('all');
+  }
+
+  function resetFileFilters() {
+    void refreshManagedFiles('', '');
+  }
+
+  async function refreshSelectedRun() {
+    if (!selectedRunId) return null;
+
+    const run = await getRun(selectedRunId);
+    setSelectedRun(run);
+    setRuns((currentRuns) => {
+      const runExists = currentRuns.some((item) => item.id === run.id);
+      if (!runExists) return [run, ...currentRuns];
+      return currentRuns.map((item) => (item.id === run.id ? run : item));
+    });
+    return run;
   }
 
   function clearDeletedRuns(runIds: string[]) {
@@ -964,6 +959,7 @@ function AdminApp() {
         logLoading={logLoading}
         bulkUpdating={bulkUpdatingTasks}
         onFilterChange={setServiceFilter}
+        onResetFilters={resetTaskFilters}
         onCreateTask={openCreateTask}
         onEditTask={openEditTask}
         onDeleteTask={removeTask}
@@ -992,6 +988,7 @@ function AdminApp() {
         onFilterChange={(value) => {
           void refreshManagedFiles(value, '');
         }}
+        onResetFilters={resetFileFilters}
         onOpenDirectory={openManagedDirectory}
         onGoParent={openManagedParentDirectory}
         onDeleteEntry={handleDeleteManagedFile}
@@ -1019,6 +1016,7 @@ function AdminApp() {
         }}
         onTaskFilterChange={setRunTaskFilter}
         onStatusFilterChange={setRunStatusFilter}
+        onResetFilters={resetRunFilters}
         onRefresh={refreshRunsAndTasks}
         onViewRunDetail={openRunDetail}
         onDeleteRun={handleDeleteRun}
@@ -1030,10 +1028,14 @@ function AdminApp() {
       <RunDetailPage
         run={selectedRun}
         onBack={() => changeView('runs')}
-        onRefresh={refreshRunsAndTasks}
+        onRefresh={refreshSelectedRun}
         onRunUpdate={(run) => {
           setSelectedRun(run);
-          setRuns((currentRuns) => currentRuns.map((item) => (item.id === run.id ? run : item)));
+          setRuns((currentRuns) => {
+            const runExists = currentRuns.some((item) => item.id === run.id);
+            if (!runExists) return [run, ...currentRuns];
+            return currentRuns.map((item) => (item.id === run.id ? run : item));
+          });
         }}
       />
     );

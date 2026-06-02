@@ -1,6 +1,6 @@
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Button, Card, Descriptions, Space, Tag, Typography } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getStoredToken } from '../../../lib/api';
 import { TaskRun } from '../../../types';
 import { formatDateTime, statusColor } from '../utils';
@@ -17,13 +17,15 @@ interface RunDetailPageProps {
 export function RunDetailPage(props: RunDetailPageProps) {
   const [wsConnected, setWsConnected] = useState(false);
   const onRunUpdateRef = useRef(props.onRunUpdate);
+  const logListRef = useRef<HTMLDivElement | null>(null);
+  const previousRunStatusRef = useRef<TaskRun['status'] | null>(null);
 
   useEffect(() => {
     onRunUpdateRef.current = props.onRunUpdate;
   }, [props.onRunUpdate]);
 
   const websocketUrl = useMemo(() => {
-    if (!props.run?.id || typeof window === 'undefined') return '';
+    if (!props.run?.id || props.run.status !== 'running' || typeof window === 'undefined') return '';
 
     const token = getStoredToken();
     if (!token) return '';
@@ -32,7 +34,7 @@ export function RunDetailPage(props: RunDetailPageProps) {
     const url = new URL(`${protocol}//${window.location.host}/ws/runs`);
     url.searchParams.set('token', token);
     return url.toString();
-  }, [props.run?.id]);
+  }, [props.run?.id, props.run?.status]);
 
   useEffect(() => {
     if (!websocketUrl || !props.run?.id) {
@@ -66,6 +68,19 @@ export function RunDetailPage(props: RunDetailPageProps) {
       ws.close();
     };
   }, [props.run?.id, websocketUrl]);
+
+  useLayoutEffect(() => {
+    const wasRunning = previousRunStatusRef.current === 'running';
+    const isRunning = props.run?.status === 'running';
+    previousRunStatusRef.current = props.run?.status || null;
+
+    if (!isRunning && !wasRunning) return;
+
+    const logList = logListRef.current;
+    if (!logList) return;
+
+    logList.scrollTop = logList.scrollHeight;
+  }, [props.run]);
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -110,19 +125,21 @@ export function RunDetailPage(props: RunDetailPageProps) {
       </Card>
 
       <Card className="module-card run-detail-log-card" title="详细日志">
-        {props.run ? (
-          props.run.details.length > 0 ? (
-            <Space direction="vertical" size={6} className="run-detail-log-list">
-              {props.run.details.map((detail, index) => (
-                <Text key={`${props.run?.id}-${index}`}>- {detail}</Text>
-              ))}
-            </Space>
+        <div ref={logListRef} className="run-detail-log-list">
+          {props.run ? (
+            props.run.details.length > 0 ? (
+              <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                {props.run.details.map((detail, index) => (
+                  <Text key={`${props.run?.id}-${index}`}>- {detail}</Text>
+                ))}
+              </Space>
+            ) : (
+              <Text type="secondary">当前运行记录暂无详细日志。</Text>
+            )
           ) : (
-            <Text type="secondary">当前运行记录暂无详细日志。</Text>
-          )
-        ) : (
-          <Text type="secondary">请返回运行记录选择一条日志。</Text>
-        )}
+            <Text type="secondary">请返回运行记录选择一条日志。</Text>
+          )}
+        </div>
       </Card>
     </Space>
   );

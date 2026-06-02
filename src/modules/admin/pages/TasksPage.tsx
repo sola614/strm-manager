@@ -1,4 +1,4 @@
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ClearOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Button, Card, Popconfirm, Select, Space, Table, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useState } from 'react';
@@ -27,6 +27,7 @@ interface TasksPageProps {
   logLoading: boolean;
   bulkUpdating: boolean;
   onFilterChange: (value: string) => void;
+  onResetFilters: () => void;
   onCreateTask: () => void;
   onEditTask: (task: SyncTask) => void;
   onDeleteTask: (task: SyncTask) => void;
@@ -171,7 +172,10 @@ export function TasksPage(props: TasksPageProps) {
             <Select
               value={props.serviceFilter}
               style={{ width: 260 }}
-              onChange={props.onFilterChange}
+              onChange={(value) => {
+                setSelectedRowKeys([]);
+                props.onFilterChange(value);
+              }}
               options={[
                 { label: '全部服务', value: 'all' },
                 ...props.services.map((service) => ({
@@ -180,6 +184,15 @@ export function TasksPage(props: TasksPageProps) {
                 })),
               ]}
             />
+            <Button
+              icon={<ClearOutlined />}
+              onClick={() => {
+                setSelectedRowKeys([]);
+                props.onResetFilters();
+              }}
+            >
+              重置
+            </Button>
             <Button
               disabled={props.actionsDisabled || !selectedScheduledTaskIds.length}
               loading={props.bulkUpdating}

@@ -1,4 +1,4 @@
-import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ClearOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Button, Card, Popconfirm, Select, Space, Table, Tag } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { Key } from 'react';
@@ -19,6 +19,7 @@ interface RunsPageProps {
   onServiceFilterChange: (value: string) => void;
   onTaskFilterChange: (value: string) => void;
   onStatusFilterChange: (value: TaskRun['status'] | 'all') => void;
+  onResetFilters: () => void;
   onRefresh: () => void;
   onViewRunDetail: (run: TaskRun | null) => void;
   onDeleteRun: (run: TaskRun) => void;
@@ -164,6 +165,11 @@ export function RunsPage(props: RunsPageProps) {
     }),
   };
 
+  function resetFilters() {
+    setSelectedRowKeys([]);
+    props.onResetFilters();
+  }
+
   return (
     <>
       <Card
@@ -174,7 +180,10 @@ export function RunsPage(props: RunsPageProps) {
             <Select
               value={props.serviceFilter}
               style={{ width: 220 }}
-              onChange={props.onServiceFilterChange}
+              onChange={(value) => {
+                setSelectedRowKeys([]);
+                props.onServiceFilterChange(value);
+              }}
               options={[
                 { label: '全部服务', value: 'all' },
                 ...props.services.map((service) => ({
@@ -186,7 +195,10 @@ export function RunsPage(props: RunsPageProps) {
             <Select
               value={props.statusFilter}
               style={{ width: 150 }}
-              onChange={props.onStatusFilterChange}
+              onChange={(value) => {
+                setSelectedRowKeys([]);
+                props.onStatusFilterChange(value);
+              }}
               options={[
                 { label: '全部状态', value: 'all' },
                 { label: '运行中', value: 'running' },
@@ -198,7 +210,10 @@ export function RunsPage(props: RunsPageProps) {
             <Select
               value={props.taskFilter}
               style={{ width: 240 }}
-              onChange={props.onTaskFilterChange}
+              onChange={(value) => {
+                setSelectedRowKeys([]);
+                props.onTaskFilterChange(value);
+              }}
               options={[
                 { label: '全部任务', value: 'all' },
                 ...visibleTasks.map((task) => ({
@@ -207,6 +222,9 @@ export function RunsPage(props: RunsPageProps) {
                 })),
               ]}
             />
+            <Button icon={<ClearOutlined />} onClick={resetFilters}>
+              重置
+            </Button>
             <Button icon={<ReloadOutlined />} onClick={props.onRefresh}>
               刷新
             </Button>

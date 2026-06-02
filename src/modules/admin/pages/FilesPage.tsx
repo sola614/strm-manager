@@ -2,6 +2,7 @@ import {
   CopyOutlined,
   ArrowUpOutlined,
   DeleteOutlined,
+  ClearOutlined,
   FileOutlined,
   FolderFilled,
   HomeFilled,
@@ -29,6 +30,7 @@ interface FilesPageProps {
   fileContent: ManagedFileContent | null;
   fileContentLoading: boolean;
   onFilterChange: (value: string) => void;
+  onResetFilters: () => void;
   onOpenDirectory: (relativePath: string) => void;
   onGoParent: () => void;
   onDeleteEntry: (entry: ManagedFileEntry) => void;
@@ -250,6 +252,16 @@ export function FilesPage(props: FilesPageProps) {
                 value: root.id,
               }))}
             />
+            <Button
+              icon={<ClearOutlined />}
+              loading={props.loading}
+              onClick={() => {
+                setSelectedRowKeys([]);
+                props.onResetFilters();
+              }}
+            >
+              重置
+            </Button>
             <Button
               icon={<ArrowUpOutlined />}
               disabled={props.parentDirectory === null}
