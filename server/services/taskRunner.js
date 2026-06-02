@@ -28,14 +28,30 @@ export function createTaskRunner(options) {
     updateRunRecord,
     appendRunLog,
     broadcastRunSnapshot,
+    broadcastRunPatch,
     startMaintenanceJobs,
   } = options;
 
   const scheduledJobs = new Map();
 
-  function updateRunRecordAndBroadcast(runId, values) {
+  function updateRunRecordAndBroadcast(runId, values, appendedDetails = []) {
     updateRunRecord(runId, values);
-    broadcastRunSnapshot(runId);
+    broadcastRunPatch(runId, buildRunPatch(values, appendedDetails));
+  }
+
+  function buildRunPatch(values, appendedDetails) {
+    const patch = {};
+
+    if (Object.hasOwn(values, 'completed_at')) patch.completedAt = values.completed_at;
+    if (Object.hasOwn(values, 'status')) patch.status = values.status;
+    if (Object.hasOwn(values, 'message')) patch.message = values.message;
+    if (Object.hasOwn(values, 'processed_count')) patch.processedCount = Number(values.processed_count || 0);
+    if (Object.hasOwn(values, 'subtitle_count')) patch.subtitleCount = Number(values.subtitle_count || 0);
+    if (Object.hasOwn(values, 'skipped_count')) patch.skippedCount = Number(values.skipped_count || 0);
+    if (Object.hasOwn(values, 'failure_count')) patch.failureCount = Number(values.failure_count || 0);
+    if (appendedDetails.length) patch.details = appendedDetails;
+
+    return patch;
   }
 
   function scheduleTask(task) {
@@ -242,15 +258,19 @@ export function createTaskRunner(options) {
 
   function createRunProgress(runId, details, summary) {
     let timer = null;
+    let pendingDetails = [];
 
     const write = () => {
+      const appendedDetails = pendingDetails;
+      pendingDetails = [];
+
       updateRunRecordAndBroadcast(runId, {
         details: JSON.stringify(details.slice(0, 300)),
         processed_count: summary.processedCount,
         subtitle_count: summary.subtitleCount,
         skipped_count: summary.skippedCount,
         failure_count: summary.failureCount,
-      });
+      }, appendedDetails);
     };
 
     return {
@@ -259,6 +279,7 @@ export function createTaskRunner(options) {
       addDetail(message) {
         const timedMessage = `${formatRunLogTimestamp(getConfiguredTimezone())} ${message}`;
         details.push(timedMessage);
+        pendingDetails.push(timedMessage);
         appendRunLog(runId, timedMessage);
         this.changed();
       },

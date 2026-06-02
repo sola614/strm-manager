@@ -94,6 +94,7 @@ export function createServer(projectRoot) {
     updateRunRecord: runStore.updateRunRecord,
     appendRunLog: runStore.appendRunLog,
     broadcastRunSnapshot: runEvents.broadcastRunSnapshot,
+    broadcastRunPatch: runEvents.broadcastRunPatch,
     startMaintenanceJobs: maintenance.startMaintenanceJobs,
   });
 

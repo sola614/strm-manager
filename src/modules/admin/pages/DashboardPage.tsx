@@ -83,7 +83,7 @@ export function DashboardPage(props: DashboardPageProps) {
 
   return (
     <Space direction="vertical" size={20} className="dashboard-page">
-      <Row gutter={[20, 20]}>
+      <Row gutter={[20, 20]} className="dashboard-equal-row">
         <Col xs={24} md={12} xl={6}>
           <Card className="metric-card">
             <Statistic title="OpenList 服务" value={services.length} prefix={<CloudServerOutlined />} />
@@ -110,7 +110,7 @@ export function DashboardPage(props: DashboardPageProps) {
         </Col>
       </Row>
 
-      <Row gutter={[20, 20]}>
+      <Row gutter={[20, 20]} className="dashboard-equal-row">
         <Col xs={24} xl={10}>
           <Card className="module-card dashboard-chart-card" title="运行状态分布">
             <div className="dashboard-status-chart">
@@ -169,7 +169,7 @@ export function DashboardPage(props: DashboardPageProps) {
         </Col>
       </Row>
 
-      <Row gutter={[20, 20]} className="dashboard-main-row">
+      <Row gutter={[20, 20]} className="dashboard-main-row dashboard-equal-row">
         <Col xs={24} xl={12}>
           <Card
             className="module-card dashboard-list-card"

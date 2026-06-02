@@ -115,15 +115,42 @@ button {
   width: 100%;
 }
 
+.dashboard-equal-row {
+  align-items: stretch;
+}
+
+.dashboard-equal-row > .ant-col {
+  display: flex;
+}
+
+.dashboard-equal-row > .ant-col > .ant-card {
+  width: 100%;
+}
+
+.dashboard-equal-row .module-card,
+.dashboard-equal-row .metric-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-equal-row .module-card > .ant-card-body,
+.dashboard-equal-row .metric-card > .ant-card-body {
+  flex: 1;
+}
+
 .dashboard-chart-card .ant-card-body {
   min-height: 220px;
+  display: flex;
+  align-items: center;
 }
 
 .dashboard-status-chart {
   display: flex;
   align-items: center;
   gap: 28px;
-  min-height: 176px;
+  width: 100%;
+  min-height: 188px;
 }
 
 .status-donut {
@@ -172,6 +199,7 @@ button {
 }
 
 .run-trend-chart {
+  width: 100%;
   height: 188px;
   display: grid;
   grid-template-columns: repeat(7, minmax(32px, 1fr));

@@ -105,9 +105,23 @@ export function createRunEventHub({ getSetting, getRunById, hashValue, sanitizeT
     }
   }
 
+  function broadcastRunPatch(runId, patch) {
+    const subscribers = runSubscribers.get(runId);
+    if (!subscribers?.size) return;
+
+    for (const client of subscribers) {
+      sendWebSocketJson(client.socket, {
+        type: 'runPatch',
+        runId,
+        patch,
+      });
+    }
+  }
+
   return {
     handleWebSocketUpgrade,
     broadcastRunSnapshot,
+    broadcastRunPatch,
   };
 }
 

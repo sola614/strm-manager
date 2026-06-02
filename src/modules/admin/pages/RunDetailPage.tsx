@@ -17,12 +17,17 @@ interface RunDetailPageProps {
 export function RunDetailPage(props: RunDetailPageProps) {
   const [wsConnected, setWsConnected] = useState(false);
   const onRunUpdateRef = useRef(props.onRunUpdate);
+  const currentRunRef = useRef<TaskRun | null>(props.run);
   const logListRef = useRef<HTMLDivElement | null>(null);
   const previousRunStatusRef = useRef<TaskRun['status'] | null>(null);
 
   useEffect(() => {
     onRunUpdateRef.current = props.onRunUpdate;
   }, [props.onRunUpdate]);
+
+  useEffect(() => {
+    currentRunRef.current = props.run;
+  }, [props.run]);
 
   const websocketUrl = useMemo(() => {
     if (!props.run?.id || props.run.status !== 'running' || typeof window === 'undefined') return '';
@@ -54,7 +59,18 @@ export function RunDetailPage(props: RunDetailPageProps) {
       try {
         const payload = JSON.parse(event.data);
         if (payload?.type === 'runSnapshot' && payload.run?.id === runId) {
+          currentRunRef.current = payload.run;
           onRunUpdateRef.current(payload.run);
+          return;
+        }
+
+        if (payload?.type === 'runPatch' && payload.runId === runId) {
+          const currentRun = currentRunRef.current;
+          if (!currentRun || currentRun.id !== runId) return;
+
+          const nextRun = mergeRunPatch(currentRun, payload.patch);
+          currentRunRef.current = nextRun;
+          onRunUpdateRef.current(nextRun);
         }
       } catch {
         // Ignore malformed websocket payloads.
@@ -143,4 +159,15 @@ export function RunDetailPage(props: RunDetailPageProps) {
       </Card>
     </Space>
   );
+}
+
+function mergeRunPatch(run: TaskRun, patch: Partial<TaskRun> | null | undefined): TaskRun {
+  if (!patch || typeof patch !== 'object') return run;
+
+  const { details, ...fields } = patch;
+  return {
+    ...run,
+    ...fields,
+    details: Array.isArray(details) ? [...run.details, ...details] : run.details,
+  };
 }
