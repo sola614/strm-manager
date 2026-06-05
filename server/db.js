@@ -78,6 +78,12 @@ export function createTables(db) {
     CREATE INDEX IF NOT EXISTS idx_run_logs_run_id_line_index
       ON run_logs(run_id, line_index);
 
+    CREATE INDEX IF NOT EXISTS idx_runs_task_id
+      ON runs(task_id);
+
+    CREATE INDEX IF NOT EXISTS idx_runs_started_at
+      ON runs(started_at DESC);
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL

@@ -20,7 +20,6 @@ interface TasksPageProps {
   services: OpenlistService[];
   tasks: SyncTask[];
   serviceFilter: string;
-  actionsDisabled: boolean;
   logModalOpen: boolean;
   logTask: SyncTask | null;
   latestRunLog: TaskRun | null;
@@ -93,7 +92,6 @@ export function TasksPage(props: TasksPageProps) {
             size="small"
             value={record.enabled}
             style={{ width: 96 }}
-            disabled={props.actionsDisabled}
             onChange={(enabled) => props.onToggleTaskEnabled(record, enabled)}
             options={[
               { label: '已启用', value: true },
@@ -128,22 +126,22 @@ export function TasksPage(props: TasksPageProps) {
       width: 340,
       render: (_value: unknown, record: SyncTask) => (
         <Space wrap>
-          <Button size="small" disabled={props.actionsDisabled} onClick={() => props.onEditTask(record)}>
+          <Button size="small" onClick={() => props.onEditTask(record)}>
             编辑
           </Button>
-          <Button size="small" disabled={props.actionsDisabled} onClick={() => props.onOpenLog(record)}>
+          <Button size="small" onClick={() => props.onOpenLog(record)}>
             日志
           </Button>
           <Button
             size="small"
             type="primary"
-            disabled={props.actionsDisabled || !canRunTask(record)}
+            disabled={!canRunTask(record)}
             onClick={() => props.onTriggerTask(record)}
           >
             立即执行
           </Button>
           <Popconfirm title="删除定时任务" onConfirm={() => props.onDeleteTask(record)}>
-            <Button size="small" danger disabled={props.actionsDisabled}>
+            <Button size="small" danger>
               删除
             </Button>
           </Popconfirm>
@@ -194,7 +192,7 @@ export function TasksPage(props: TasksPageProps) {
               重置
             </Button>
             <Button
-              disabled={props.actionsDisabled || !selectedScheduledTaskIds.length}
+              disabled={!selectedScheduledTaskIds.length}
               loading={props.bulkUpdating}
               onClick={() => {
                 props.onBulkUpdateTasksEnabled(selectedScheduledTaskIds, true);
@@ -204,7 +202,7 @@ export function TasksPage(props: TasksPageProps) {
               批量启用
             </Button>
             <Button
-              disabled={props.actionsDisabled || !selectedScheduledTaskIds.length}
+              disabled={!selectedScheduledTaskIds.length}
               loading={props.bulkUpdating}
               onClick={() => {
                 props.onBulkUpdateTasksEnabled(selectedScheduledTaskIds, false);
@@ -219,7 +217,6 @@ export function TasksPage(props: TasksPageProps) {
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              disabled={props.actionsDisabled}
               onClick={props.onCreateTask}
             >
               新增任务

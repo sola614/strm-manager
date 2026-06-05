@@ -20,7 +20,6 @@ interface DashboardPageProps {
   services: OpenlistService[];
   tasks: SyncTask[];
   runs: TaskRun[];
-  actionsDisabled: boolean;
   onCreateService: () => void;
   onCreateTask: () => void;
   onEditService: (service: OpenlistService) => void;
@@ -34,7 +33,6 @@ export function DashboardPage(props: DashboardPageProps) {
     services,
     tasks,
     runs,
-    actionsDisabled,
     onCreateService,
     onCreateTask,
     onEditService,
@@ -179,7 +177,7 @@ export function DashboardPage(props: DashboardPageProps) {
                 <Button type="link" onClick={() => onSwitchView('services')}>
                   查看全部
                 </Button>
-                <Button type="primary" onClick={onCreateService} disabled={actionsDisabled}>
+                <Button type="primary" onClick={onCreateService}>
                   新增服务
                 </Button>
               </Space>
@@ -191,7 +189,7 @@ export function DashboardPage(props: DashboardPageProps) {
               renderItem={(service) => (
                 <List.Item
                   actions={[
-                    <Button key="edit" type="link" disabled={actionsDisabled} onClick={() => onEditService(service)}>
+                    <Button key="edit" type="link" onClick={() => onEditService(service)}>
                       编辑
                     </Button>,
                   ]}
@@ -253,10 +251,10 @@ export function DashboardPage(props: DashboardPageProps) {
         }
       >
         <Space wrap>
-          <Button type="primary" onClick={onCreateService} disabled={actionsDisabled}>
+          <Button type="primary" onClick={onCreateService}>
             新增 OpenList 服务
           </Button>
-          <Button onClick={onCreateTask} disabled={actionsDisabled}>
+          <Button onClick={onCreateTask}>
             新增定时任务
           </Button>
         </Space>

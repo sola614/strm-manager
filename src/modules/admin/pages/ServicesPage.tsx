@@ -10,7 +10,6 @@ const { Link, Text } = Typography;
 interface ServicesPageProps {
   services: OpenlistService[];
   tasks: SyncTask[];
-  actionsDisabled: boolean;
   bulkUpdating: boolean;
   onCreateService: () => void;
   onEditService: (service: OpenlistService) => void;
@@ -102,7 +101,6 @@ export function ServicesPage(props: ServicesPageProps) {
           size="small"
           value={record.enabled}
           style={{ width: 96 }}
-          disabled={props.actionsDisabled}
           onChange={(enabled) => changeServiceEnabled(record, enabled)}
           options={[
             { label: '已启用', value: true },
@@ -129,7 +127,7 @@ export function ServicesPage(props: ServicesPageProps) {
       width: 240,
       render: (_value: unknown, record: OpenlistService) => (
         <Space>
-          <Button size="small" disabled={props.actionsDisabled} onClick={() => props.onEditService(record)}>
+          <Button size="small" onClick={() => props.onEditService(record)}>
             编辑
           </Button>
           <Popconfirm
@@ -137,7 +135,7 @@ export function ServicesPage(props: ServicesPageProps) {
             description="删除前请确保没有关联的定时任务。"
             onConfirm={() => props.onDeleteService(record)}
           >
-            <Button size="small" danger disabled={props.actionsDisabled}>
+            <Button size="small" danger>
               删除
             </Button>
           </Popconfirm>
@@ -163,14 +161,14 @@ export function ServicesPage(props: ServicesPageProps) {
       extra={
         <Space>
           <Button
-            disabled={props.actionsDisabled || !selectedRowKeys.length}
+            disabled={!selectedRowKeys.length}
             loading={props.bulkUpdating}
             onClick={() => bulkChangeServicesEnabled(true)}
           >
             批量启用
           </Button>
           <Button
-            disabled={props.actionsDisabled || !selectedRowKeys.length}
+            disabled={!selectedRowKeys.length}
             loading={props.bulkUpdating}
             onClick={() => bulkChangeServicesEnabled(false)}
           >
@@ -182,7 +180,6 @@ export function ServicesPage(props: ServicesPageProps) {
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            disabled={props.actionsDisabled}
             onClick={props.onCreateService}
           >
             新增服务

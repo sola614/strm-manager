@@ -505,15 +505,6 @@ async function triggerCallback(callbackUrl, payload) {
   }
 }
 
-async function fetchWithRequestDelay(task, input, init = undefined) {
-  const requestDelaySeconds = getRequestDelaySeconds(task?.requestDelaySeconds);
-  if (requestDelaySeconds > 0) {
-    await delay(requestDelaySeconds * 1000);
-  }
-
-  return fetch(input, init);
-}
-
 function getRequestDelaySeconds(value) {
   const expression = String(value ?? '0').trim().replace(/\s+/g, '');
   const rangeMatch = expression.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);

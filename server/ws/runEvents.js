@@ -2,6 +2,36 @@ import crypto from 'node:crypto';
 
 export function createRunEventHub({ getSetting, getRunById, hashValue, sanitizeText }) {
   const runSubscribers = new Map();
+  const HEARTBEAT_INTERVAL = 30_000;
+  let heartbeatTimer = null;
+
+  function startHeartbeat() {
+    if (heartbeatTimer) return;
+    heartbeatTimer = setInterval(() => {
+      if (!runSubscribers.size) {
+        stopHeartbeat();
+        return;
+      }
+      for (const [, subscribers] of runSubscribers) {
+        for (const client of subscribers) {
+          if (!client.socket.destroyed) {
+            try {
+              client.socket.write(encodeWebSocketFrame('', 0x9));
+            } catch {
+              unsubscribeRunClient(client);
+            }
+          }
+        }
+      }
+    }, HEARTBEAT_INTERVAL);
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+  }
 
   function handleWebSocketUpgrade(req, socket) {
     if (!req.url?.startsWith('/ws/runs')) {
@@ -75,6 +105,8 @@ export function createRunEventHub({ getSetting, getRunById, hashValue, sanitizeT
 
     socket.on('close', () => unsubscribeRunClient(client));
     socket.on('error', () => unsubscribeRunClient(client));
+
+    startHeartbeat();
   }
 
   function unsubscribeRunClient(client) {
@@ -130,24 +162,25 @@ function sendWebSocketJson(socket, payload) {
   socket.write(encodeWebSocketFrame(JSON.stringify(payload)));
 }
 
-function encodeWebSocketFrame(message) {
+function encodeWebSocketFrame(message, opcode = 0x1) {
   const payload = Buffer.from(message);
   const length = payload.length;
+  const finAndOpcode = 0x80 | opcode;
 
   if (length < 126) {
-    return Buffer.concat([Buffer.from([0x81, length]), payload]);
+    return Buffer.concat([Buffer.from([finAndOpcode, length]), payload]);
   }
 
   if (length < 65536) {
     const header = Buffer.alloc(4);
-    header[0] = 0x81;
+    header[0] = finAndOpcode;
     header[1] = 126;
     header.writeUInt16BE(length, 2);
     return Buffer.concat([header, payload]);
   }
 
   const header = Buffer.alloc(10);
-  header[0] = 0x81;
+  header[0] = finAndOpcode;
   header[1] = 127;
   header.writeBigUInt64BE(BigInt(length), 2);
   return Buffer.concat([header, payload]);

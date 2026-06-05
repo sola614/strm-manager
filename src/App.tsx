@@ -14,17 +14,11 @@ import {
   deleteService,
   deleteTask,
   exportBackup,
-  getAppConfig,
   getCurrentUser,
   getManagedFileContent,
-  getManagedFiles,
-  getRun,
-  getRuns,
-  getServices,
   getSetupRequired,
   getStoredToken,
   getTaskRuns,
-  getTasks,
   login,
   logout,
   restoreBackup,
@@ -35,20 +29,19 @@ import {
   updateService,
   updateTask,
 } from './lib/api';
-import { ADMIN_VERSION, defaultAppConfigForm, defaultServiceForm, defaultTaskForm, viewMeta } from './modules/admin/constants';
+import { ADMIN_VERSION, defaultServiceForm, defaultTaskForm, viewMeta } from './modules/admin/constants';
 import { PasswordModal } from './modules/admin/forms/PasswordModal';
 import { ServiceDrawer } from './modules/admin/forms/ServiceDrawer';
 import { TaskDrawer } from './modules/admin/forms/TaskDrawer';
 import { AdminShell } from './modules/admin/layout/AdminShell';
 import { LoginPage } from './modules/admin/pages/LoginPage';
 import { getServiceDisplayName } from './modules/admin/utils';
+import { useAppData } from './modules/admin/hooks/useAppData';
 import type {
   ActiveView,
-  AppConfig,
   AuthResponse,
-  ManagedFileEntry,
   ManagedFileContent,
-  ManagedFileRoot,
+  ManagedFileEntry,
   OpenlistService,
   SessionUser,
   SyncTask,
@@ -101,19 +94,22 @@ function AdminApp() {
   const { message } = AntdApp.useApp();
   const previousViewRef = useRef<ActiveView | null>(null);
 
+  const data = useAppData();
+  const {
+    services, setServices, tasks, setTasks, runs, setRuns,
+    managedFileRoots, managedFileEntries,
+    defaultStrmTargetPath, setDefaultStrmTargetPath, appConfig, setAppConfig,
+    fileRootFilter, setFileRootFilter, fileCurrentDirectory, setFileCurrentDirectory,
+    fileParentDirectory,
+    refreshConfig, refreshServices, refreshTasks, refreshRuns,
+    refreshManagedFiles: _refreshManagedFiles, refreshRunsAndTasks, refreshAll, refreshSelectedRun, filterOutRuns, resetData,
+  } = data;
+
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [services, setServices] = useState<OpenlistService[]>([]);
-  const [tasks, setTasks] = useState<SyncTask[]>([]);
-  const [runs, setRuns] = useState<TaskRun[]>([]);
-  const [managedFileRoots, setManagedFileRoots] = useState<ManagedFileRoot[]>([]);
-  const [managedFileEntries, setManagedFileEntries] = useState<ManagedFileEntry[]>([]);
 
   const [activeView, setActiveView] = useState<ActiveView>(() => getViewFromLocation());
   const [serviceFilter, setServiceFilter] = useState<string>('all');
-  const [fileRootFilter, setFileRootFilter] = useState<string>('');
-  const [fileCurrentDirectory, setFileCurrentDirectory] = useState<string>('');
-  const [fileParentDirectory, setFileParentDirectory] = useState<string | null>(null);
   const [runServiceFilter, setRunServiceFilter] = useState<string>('all');
   const [runTaskFilter, setRunTaskFilter] = useState<string>('all');
   const [runStatusFilter, setRunStatusFilter] = useState<TaskRun['status'] | 'all'>('all');
@@ -121,14 +117,6 @@ function AdminApp() {
   const [setupRequired, setSetupRequired] = useState(false);
   const [setupPassword, setSetupPassword] = useState('');
   const [setupConfirmPassword, setSetupConfirmPassword] = useState('');
-  const [defaultStrmTargetPath, setDefaultStrmTargetPath] = useState('/media/strm');
-  const [appConfig, setAppConfig] = useState<AppConfig>({
-    ...defaultAppConfigForm,
-    runtimePort: defaultAppConfigForm.port,
-    databasePath: '',
-    nodeEnv: '',
-    resetAdminPasswordEnabled: false,
-  });
 
   const [loginLoading, setLoginLoading] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
@@ -183,13 +171,15 @@ function AdminApp() {
     if (!user || activeView !== 'runDetail' || !selectedRunId) return;
     if (selectedRun?.id === selectedRunId) return;
 
-    getRun(selectedRunId)
+    refreshSelectedRun(selectedRunId)
       .then((run) => {
-        setSelectedRun(run);
-        setRunServiceFilter(run.serviceId);
-        setRunTaskFilter(run.taskId);
+        if (run) {
+          setSelectedRun(run);
+          setRunServiceFilter(run.serviceId);
+          setRunTaskFilter(run.taskId);
+        }
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         setSelectedRun(null);
         message.error(formatError(error, '加载详细日志失败。'));
       });
@@ -212,7 +202,7 @@ function AdminApp() {
       try {
         switch (activeView) {
           case 'dashboard':
-            await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
+            await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFilesWithLoading()]);
             break;
           case 'services':
             await Promise.all([refreshServices(), refreshTasks()]);
@@ -221,7 +211,7 @@ function AdminApp() {
             await Promise.all([refreshServices(), refreshTasks()]);
             break;
           case 'files':
-            await Promise.all([refreshTasks(), refreshManagedFiles()]);
+            await Promise.all([refreshTasks(), refreshManagedFilesWithLoading()]);
             break;
           case 'runs':
             await Promise.all([refreshServices(), refreshRunsAndTasks()]);
@@ -279,7 +269,7 @@ function AdminApp() {
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
-      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
+      await refreshAll();
     } catch (error) {
       setStoredToken(null);
       setUser(null);
@@ -320,52 +310,13 @@ function AdminApp() {
     }
   }
 
-  async function refreshConfig() {
-    const config = await getAppConfig();
-    setAppConfig(config);
-    setDefaultStrmTargetPath(config.defaultStrmTargetPath || '/media/strm');
-    return config;
-  }
-
-  async function refreshServices() {
-    const items = await getServices();
-    setServices(items);
-    return items;
-  }
-
-  async function refreshTasks() {
-    const items = await getTasks();
-    setTasks(items);
-    return items;
-  }
-
-  async function refreshRuns() {
-    const items = await getRuns();
-    setRuns(items);
-    return items;
-  }
-
-  async function refreshManagedFiles(nextRootId = fileRootFilter, nextDirectory = fileCurrentDirectory) {
+  async function refreshManagedFilesWithLoading(nextRootId?: string, nextDirectory?: string) {
     setManagedFilesLoading(true);
     try {
-      const payload = await getManagedFiles(nextRootId, nextDirectory);
-      setManagedFileRoots(payload.roots);
-      setManagedFileEntries(payload.entries);
-      setFileRootFilter(payload.currentRootId || '');
-      setFileCurrentDirectory(payload.currentDirectory || '');
-      setFileParentDirectory(payload.parentDirectory);
-
-      return payload;
+      return await _refreshManagedFiles(nextRootId, nextDirectory);
     } finally {
       setManagedFilesLoading(false);
     }
-  }
-
-  async function refreshRunsAndTasks() {
-    const [nextRuns, nextTasks] = await Promise.all([getRuns(), getTasks()]);
-    setRuns(nextRuns);
-    setTasks(nextTasks);
-    return nextRuns;
   }
 
   function resetTaskFilters() {
@@ -379,26 +330,13 @@ function AdminApp() {
   }
 
   function resetFileFilters() {
-    void refreshManagedFiles('', '');
-  }
-
-  async function refreshSelectedRun() {
-    if (!selectedRunId) return null;
-
-    const run = await getRun(selectedRunId);
-    setSelectedRun(run);
-    setRuns((currentRuns) => {
-      const runExists = currentRuns.some((item) => item.id === run.id);
-      if (!runExists) return [run, ...currentRuns];
-      return currentRuns.map((item) => (item.id === run.id ? run : item));
-    });
-    return run;
+    void refreshManagedFilesWithLoading('', '');
   }
 
   function clearDeletedRuns(runIds: string[]) {
     if (!runIds.length) return;
 
-    setRuns((currentRuns) => currentRuns.filter((run) => !runIds.includes(run.id)));
+    filterOutRuns(runIds);
 
     if (selectedRun && runIds.includes(selectedRun.id)) {
       setSelectedRun(null);
@@ -440,7 +378,7 @@ function AdminApp() {
         return;
       }
 
-      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
+      await refreshAll();
       message.success('登录成功。');
     } catch (error) {
       message.error(formatError(error, '登录失败。'));
@@ -458,15 +396,8 @@ function AdminApp() {
 
     setStoredToken(null);
     setUser(null);
-    setServices([]);
-    setTasks([]);
-    setRuns([]);
-    setManagedFileRoots([]);
-    setManagedFileEntries([]);
+    resetData();
     setServiceFilter('all');
-    setFileRootFilter('');
-    setFileCurrentDirectory('');
-    setFileParentDirectory(null);
     setRunServiceFilter('all');
     setRunTaskFilter('all');
     setRunStatusFilter('all');
@@ -480,7 +411,7 @@ function AdminApp() {
       const result = await changePassword(newPassword);
       handleAuthSuccess(result);
       setPasswordOpen(false);
-      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
+      await refreshAll();
       message.success('密码修改成功。');
     } catch (error) {
       message.error(formatError(error, '密码修改失败。'));
@@ -515,7 +446,7 @@ function AdminApp() {
     try {
       setRestoring(true);
       const result = await restoreBackup(file);
-      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
+      await refreshAll();
       setEditingService(null);
       setEditingTask(null);
       setServiceDrawerOpen(false);
@@ -529,7 +460,7 @@ function AdminApp() {
     }
   }
 
-  async function handleAppConfigSubmit(values: typeof defaultAppConfigForm) {
+  async function handleAppConfigSubmit(values: Parameters<typeof updateAppConfig>[0]) {
     setSavingConfig(true);
     try {
       const result = await updateAppConfig(values);
@@ -586,7 +517,7 @@ function AdminApp() {
         message.success('OpenList 服务已创建。');
       }
 
-      await Promise.all([refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
+      await Promise.all([refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFilesWithLoading()]);
       setServiceDrawerOpen(false);
       setEditingService(null);
     } catch (error) {
@@ -600,7 +531,7 @@ function AdminApp() {
   async function removeService(service: OpenlistService) {
     try {
       await deleteService(service.id);
-      await Promise.all([refreshServices(), refreshManagedFiles()]);
+      await Promise.all([refreshServices(), refreshManagedFilesWithLoading()]);
       message.success(`服务 ${getServiceDisplayName(service)} 已删除。`);
     } catch (error) {
       message.error(formatError(error, '删除 OpenList 服务失败。'));
@@ -624,7 +555,7 @@ function AdminApp() {
       const result = await setupInitialPassword(nextPassword);
       setSetupRequired(false);
       handleAuthSuccess(result);
-      await Promise.all([refreshConfig(), refreshServices(), refreshTasks(), refreshRuns(), refreshManagedFiles()]);
+      await refreshAll();
       message.success('管理员密码设置成功。');
     } catch (error) {
       message.error(formatError(error, '设置管理员密码失败。'));
@@ -720,7 +651,7 @@ function AdminApp() {
         message.success('定时任务已创建。');
       }
 
-      await Promise.all([refreshTasks(), refreshManagedFiles()]);
+      await Promise.all([refreshTasks(), refreshManagedFilesWithLoading()]);
       setTaskDrawerOpen(false);
       setEditingTask(null);
     } catch (error) {
@@ -734,7 +665,7 @@ function AdminApp() {
   async function removeTask(task: SyncTask) {
     try {
       await deleteTask(task.id);
-      await Promise.all([refreshTasks(), refreshRuns(), refreshManagedFiles()]);
+      await Promise.all([refreshTasks(), refreshRuns(), refreshManagedFilesWithLoading()]);
       message.success(`任务 ${task.name} 已删除。`);
     } catch (error) {
       message.error(formatError(error, '删除定时任务失败。'));
@@ -746,20 +677,9 @@ function AdminApp() {
 
     try {
       await updateTask(task.id, {
-        name: task.name,
-        serviceId: task.serviceId,
-        sourcePath: task.sourcePath,
-        targetPath: task.targetPath,
+        ...task,
         scheduleEnabled: Boolean(task.cron),
-        cron: task.cron,
-        maxConcurrency: task.maxConcurrency,
-        downloadExtensions: task.downloadExtensions,
-        downloadSubtitles: task.downloadSubtitles,
-        requestDelaySeconds: task.requestDelaySeconds,
-        overwriteExisting: task.overwriteExisting,
         enabled,
-        notifyEnabled: task.notifyEnabled,
-        callbackUrl: task.callbackUrl,
       });
       await Promise.all([refreshTasks(), refreshRuns()]);
       message.success(enabled ? '任务已启用。' : '任务已禁用。');
@@ -797,12 +717,12 @@ function AdminApp() {
   }
 
   function openManagedDirectory(relativePath: string) {
-    void refreshManagedFiles(fileRootFilter, relativePath);
+    void refreshManagedFilesWithLoading(fileRootFilter, relativePath);
   }
 
   function openManagedParentDirectory() {
     if (!fileParentDirectory && fileParentDirectory !== '') return;
-    void refreshManagedFiles(fileRootFilter, fileParentDirectory || '');
+    void refreshManagedFilesWithLoading(fileRootFilter, fileParentDirectory || '');
   }
 
   async function handleDeleteManagedFile(entry: ManagedFileEntry) {
@@ -811,7 +731,7 @@ function AdminApp() {
     setDeletingManagedFileIds((current) => Array.from(new Set([...current, entry.id])));
     try {
       await deleteManagedFile(fileRootFilter, entry.relativePath);
-      await refreshManagedFiles(fileRootFilter, fileCurrentDirectory);
+      await refreshManagedFilesWithLoading(fileRootFilter, fileCurrentDirectory);
       message.success(`${entry.type === 'directory' ? '文件夹' : '文件'} ${entry.name} 已删除。`);
     } catch (error) {
       message.error(formatError(error, '删除文件失败。'));
@@ -833,7 +753,7 @@ function AdminApp() {
         fileRootFilter,
         entries.map((entry) => entry.relativePath),
       );
-      await refreshManagedFiles(fileRootFilter, fileCurrentDirectory);
+      await refreshManagedFilesWithLoading(fileRootFilter, fileCurrentDirectory);
       message.success(`已删除 ${result.deletedCount} 项。`);
     } catch (error) {
       message.error(formatError(error, '批量删除文件失败。'));
@@ -912,7 +832,6 @@ function AdminApp() {
   }
 
   const viewInfo = viewMeta[activeView];
-  const actionsDisabled = false;
 
   let pageContent = null;
 
@@ -922,7 +841,6 @@ function AdminApp() {
         services={services}
         tasks={tasks}
         runs={runs}
-        actionsDisabled={actionsDisabled}
         onCreateService={openCreateService}
         onCreateTask={openCreateTask}
         onEditService={openEditService}
@@ -936,7 +854,6 @@ function AdminApp() {
       <ServicesPage
         services={services}
         tasks={tasks}
-        actionsDisabled={actionsDisabled}
         bulkUpdating={bulkUpdatingServices}
         onCreateService={openCreateService}
         onEditService={openEditService}
@@ -952,7 +869,6 @@ function AdminApp() {
         services={services}
         tasks={filteredTasks}
         serviceFilter={serviceFilter}
-        actionsDisabled={actionsDisabled}
         logModalOpen={latestLogModalOpen}
         logTask={logTask}
         latestRunLog={latestRunLog}
@@ -986,7 +902,7 @@ function AdminApp() {
         fileContent={managedFileContent}
         fileContentLoading={managedFileContentLoading}
         onFilterChange={(value) => {
-          void refreshManagedFiles(value, '');
+          void refreshManagedFilesWithLoading(value, '');
         }}
         onResetFilters={resetFileFilters}
         onOpenDirectory={openManagedDirectory}
@@ -995,7 +911,7 @@ function AdminApp() {
         onBulkDeleteEntries={handleBulkDeleteManagedFiles}
         onViewFileContent={handleViewManagedFileContent}
         onCloseFileContent={() => setManagedFileContent(null)}
-        onRefresh={refreshManagedFiles}
+        onRefresh={refreshManagedFilesWithLoading}
       />
     );
   } else if (activeView === 'runs') {
@@ -1028,10 +944,10 @@ function AdminApp() {
       <RunDetailPage
         run={selectedRun}
         onBack={() => changeView('runs')}
-        onRefresh={refreshSelectedRun}
+        onRefresh={() => refreshSelectedRun(selectedRunId)}
         onRunUpdate={(run) => {
           setSelectedRun(run);
-          setRuns((currentRuns) => {
+          setRuns((currentRuns: TaskRun[]) => {
             const runExists = currentRuns.some((item) => item.id === run.id);
             if (!runExists) return [run, ...currentRuns];
             return currentRuns.map((item) => (item.id === run.id ? run : item));

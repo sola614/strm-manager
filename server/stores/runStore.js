@@ -7,6 +7,9 @@ export function createRunStore({ db, maxRunHistory, getLogCleanupEnabled, getLog
     VALUES (?, ?, ?, ?)
   `);
 
+  let runCountSincePrune = 0;
+  const PRUNE_INTERVAL = 10;
+
   function createRunRecord(run) {
     const tx = db.transaction(() => {
       db.prepare(`
@@ -37,14 +40,18 @@ export function createRunStore({ db, maxRunHistory, getLogCleanupEnabled, getLog
     });
     tx();
 
-    pruneRuns();
+    runCountSincePrune += 1;
+    if (runCountSincePrune >= PRUNE_INTERVAL) {
+      pruneRuns();
+      runCountSincePrune = 0;
+    }
   }
 
   function updateRunRecord(runId, values) {
     const normalizedValues = { ...values };
 
     if (Array.isArray(values.details)) {
-      replaceRunLogs(runId, values.details);
+      appendNewRunLogs(runId, values.details);
       normalizedValues.details = JSON.stringify(values.details.slice(-300));
     }
 
@@ -57,8 +64,23 @@ export function createRunStore({ db, maxRunHistory, getLogCleanupEnabled, getLog
     );
   }
 
-  function mapRunRow(row) {
-    const logs = loadRunLogs(row.id);
+  function appendNewRunLogs(runId, messages) {
+    const existingCount = Number(
+      db.prepare('SELECT COUNT(*) AS cnt FROM run_logs WHERE run_id = ?').get(runId)?.cnt || 0,
+    );
+    const newMessages = messages.slice(existingCount);
+    if (!newMessages.length) return;
+
+    const tx = db.transaction(() => {
+      newMessages.forEach((message, index) => {
+        insertRunLog.run(runId, existingCount + index, String(message || ''), now());
+      });
+    });
+    tx();
+  }
+
+  function mapRunRow(row, logsMap = null) {
+    const logs = logsMap ? (logsMap.get(row.id) || []) : loadRunLogs(row.id);
 
     return {
       id: row.id,
@@ -79,17 +101,44 @@ export function createRunStore({ db, maxRunHistory, getLogCleanupEnabled, getLog
     };
   }
 
+  function batchLoadRunLogsMap(rows) {
+    if (!rows.length) return new Map();
+    const placeholders = rows.map(() => '?').join(',');
+    const ids = rows.map((row) => row.id);
+    const logRows = db.prepare(`
+      SELECT run_id, message
+      FROM run_logs
+      WHERE run_id IN (${placeholders})
+      ORDER BY run_id, line_index ASC
+    `).all(...ids);
+
+    const map = new Map();
+    for (const logRow of logRows) {
+      if (!map.has(logRow.run_id)) {
+        map.set(logRow.run_id, []);
+      }
+      map.get(logRow.run_id).push(logRow.message);
+    }
+    return map;
+  }
+
   function loadRuns() {
-    return db.prepare('SELECT * FROM runs ORDER BY started_at DESC').all().map(mapRunRow);
+    const rows = db.prepare('SELECT * FROM runs ORDER BY started_at DESC').all();
+    const logsMap = batchLoadRunLogsMap(rows);
+    return rows.map((row) => mapRunRow(row, logsMap));
   }
 
   function loadRunsByTask(taskId) {
-    return db.prepare('SELECT * FROM runs WHERE task_id = ? ORDER BY started_at DESC').all(taskId).map(mapRunRow);
+    const rows = db.prepare('SELECT * FROM runs WHERE task_id = ? ORDER BY started_at DESC').all(taskId);
+    const logsMap = batchLoadRunLogsMap(rows);
+    return rows.map((row) => mapRunRow(row, logsMap));
   }
 
   function getRunById(id) {
     const row = db.prepare('SELECT * FROM runs WHERE id = ?').get(id);
-    return row ? mapRunRow(row) : null;
+    if (!row) return null;
+    const logsMap = batchLoadRunLogsMap([row]);
+    return mapRunRow(row, logsMap);
   }
 
   function listRunsByIds(ids) {
@@ -97,7 +146,9 @@ export function createRunStore({ db, maxRunHistory, getLogCleanupEnabled, getLog
     if (!normalizedIds.length) return [];
 
     const placeholders = normalizedIds.map(() => '?').join(',');
-    return db.prepare(`SELECT * FROM runs WHERE id IN (${placeholders})`).all(...normalizedIds).map(mapRunRow);
+    const rows = db.prepare(`SELECT * FROM runs WHERE id IN (${placeholders})`).all(...normalizedIds);
+    const logsMap = batchLoadRunLogsMap(rows);
+    return rows.map((row) => mapRunRow(row, logsMap));
   }
 
   function deleteRunRecords(ids) {
