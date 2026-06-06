@@ -181,7 +181,6 @@ export function TaskDrawer(props: TaskDrawerProps) {
         downloadSubtitles: props.task.downloadSubtitles,
         requestDelaySeconds: props.task.requestDelaySeconds,
         overwriteExisting: props.task.overwriteExisting,
-        enabled: props.task.enabled,
         notifyEnabled: props.task.notifyEnabled,
         callbackUrl: props.task.callbackUrl,
       }
@@ -225,7 +224,6 @@ export function TaskDrawer(props: TaskDrawerProps) {
               const finalValues: SyncTaskFormValues = {
                 ...values,
                 cron: values.scheduleEnabled ? effectiveCron : '',
-                enabled: values.scheduleEnabled ? values.enabled : true,
                 callbackUrl: values.notifyEnabled ? values.callbackUrl || '' : '',
               };
               await props.onSubmit(finalValues);
@@ -503,20 +501,6 @@ export function TaskDrawer(props: TaskDrawerProps) {
           }
         </Form.Item>
 
-        <Form.Item shouldUpdate={(prev, next) => prev.scheduleEnabled !== next.scheduleEnabled} noStyle>
-          {({ getFieldValue }) =>
-            getFieldValue('scheduleEnabled') ? (
-              <Form.Item label="是否启用定时任务" name="enabled">
-                <Radio.Group
-                  options={[
-                    { label: '否', value: false },
-                    { label: '是', value: true },
-                  ]}
-                />
-              </Form.Item>
-            ) : null
-          }
-        </Form.Item>
       </Form>
     </Drawer>
   );

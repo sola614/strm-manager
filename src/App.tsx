@@ -5,7 +5,6 @@ import {
   bulkDeleteRuns,
   bulkDeleteManagedFiles,
   bulkUpdateServicesEnabled,
-  bulkUpdateTasksEnabled,
   changePassword,
   createService,
   createTask,
@@ -134,7 +133,6 @@ function AdminApp() {
   const [managedFileContentLoading, setManagedFileContentLoading] = useState(false);
   const [bulkDeletingFiles, setBulkDeletingFiles] = useState(false);
   const [bulkUpdatingServices, setBulkUpdatingServices] = useState(false);
-  const [bulkUpdatingTasks, setBulkUpdatingTasks] = useState(false);
   const [bulkDeletingRuns, setBulkDeletingRuns] = useState(false);
   const [deletingManagedFileIds, setDeletingManagedFileIds] = useState<string[]>([]);
   const [deletingRunIds, setDeletingRunIds] = useState<string[]>([]);
@@ -672,40 +670,6 @@ function AdminApp() {
     }
   }
 
-  async function toggleTaskEnabled(task: SyncTask, enabled: boolean) {
-    if (task.enabled === enabled) return;
-
-    try {
-      await updateTask(task.id, {
-        ...task,
-        scheduleEnabled: Boolean(task.cron),
-        enabled,
-      });
-      await Promise.all([refreshTasks(), refreshRuns()]);
-      message.success(enabled ? '任务已启用。' : '任务已禁用。');
-    } catch (error) {
-      message.error(formatError(error, '更新任务状态失败。'));
-    }
-  }
-
-  async function handleBulkUpdateTasksEnabled(taskIds: string[], enabled: boolean) {
-    if (!taskIds.length) {
-      message.warning('请先勾选已配置定时的任务。');
-      return;
-    }
-
-    setBulkUpdatingTasks(true);
-    try {
-      const result = await bulkUpdateTasksEnabled(taskIds, enabled);
-      await refreshTasks();
-      message.success(`已${enabled ? '启用' : '禁用'} ${result.updatedCount} 个任务。`);
-    } catch (error) {
-      message.error(formatError(error, '批量修改任务状态失败。'));
-    } finally {
-      setBulkUpdatingTasks(false);
-    }
-  }
-
   async function triggerTask(task: SyncTask) {
     try {
       await triggerTaskRun(task.id);
@@ -873,15 +837,12 @@ function AdminApp() {
         logTask={logTask}
         latestRunLog={latestRunLog}
         logLoading={logLoading}
-        bulkUpdating={bulkUpdatingTasks}
         onFilterChange={setServiceFilter}
         onResetFilters={resetTaskFilters}
         onCreateTask={openCreateTask}
         onEditTask={openEditTask}
         onDeleteTask={removeTask}
         onTriggerTask={triggerTask}
-        onToggleTaskEnabled={toggleTaskEnabled}
-        onBulkUpdateTasksEnabled={handleBulkUpdateTasksEnabled}
         onOpenLog={openTaskLog}
         onCloseLog={() => setLatestLogModalOpen(false)}
         onViewRunDetail={openRunDetail}

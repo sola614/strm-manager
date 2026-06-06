@@ -33,7 +33,6 @@ export const defaultTaskForm: SyncTaskFormValues = {
   downloadSubtitles: false,
   requestDelaySeconds: '5',
   overwriteExisting: false,
-  enabled: true,
   notifyEnabled: false,
   callbackUrl: '',
 };

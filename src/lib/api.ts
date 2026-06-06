@@ -224,14 +224,6 @@ export function updateTask(id: string, values: SyncTaskFormValues) {
   });
 }
 
-export function bulkUpdateTasksEnabled(ids: string[], enabled: boolean) {
-  return requestJson<{ updatedCount: number; skippedCount: number }>('/api/tasks/bulk-enabled', {
-    method: 'POST',
-    headers: buildHeaders(undefined, true),
-    body: JSON.stringify({ ids, enabled }),
-  });
-}
-
 export function deleteTask(id: string) {
   return requestJson<void>(`/api/tasks/${encodeURIComponent(id)}`, {
     method: 'DELETE',

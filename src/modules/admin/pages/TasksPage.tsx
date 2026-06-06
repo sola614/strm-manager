@@ -1,5 +1,5 @@
 import { ClearOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Button, Card, Popconfirm, Select, Space, Table, Typography } from 'antd';
+import { Button, Card, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useState } from 'react';
 import { OpenlistService, SyncTask, TaskRun } from '../../../types';
@@ -24,15 +24,12 @@ interface TasksPageProps {
   logTask: SyncTask | null;
   latestRunLog: TaskRun | null;
   logLoading: boolean;
-  bulkUpdating: boolean;
   onFilterChange: (value: string) => void;
   onResetFilters: () => void;
   onCreateTask: () => void;
   onEditTask: (task: SyncTask) => void;
   onDeleteTask: (task: SyncTask) => void;
   onTriggerTask: (task: SyncTask) => void;
-  onToggleTaskEnabled: (task: SyncTask, enabled: boolean) => void;
-  onBulkUpdateTasksEnabled: (taskIds: string[], enabled: boolean) => void;
   onOpenLog: (task: SyncTask) => void;
   onCloseLog: () => void;
   onViewRunDetail: (run: TaskRun | null) => void;
@@ -41,16 +38,11 @@ interface TasksPageProps {
 
 export function TasksPage(props: TasksPageProps) {
   const [pageSize, setPageSize] = useState(() => getStoredPageSize('tasks'));
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
   function canRunTask(task: SyncTask) {
     const service = props.services.find((item) => item.id === task.serviceId);
-    return (!task.cron || task.enabled) && service?.enabled !== false;
+    return service?.enabled !== false;
   }
-
-  const selectedScheduledTaskIds = props.tasks
-    .filter((task) => selectedRowKeys.includes(task.id) && Boolean(task.cron))
-    .map((task) => task.id);
 
   const columns: ColumnsType<SyncTask> = [
     {
@@ -85,21 +77,12 @@ export function TasksPage(props: TasksPageProps) {
     },
     {
       title: '状态',
-      key: 'enabled',
+      key: 'schedule',
       render: (_value: unknown, record: SyncTask) =>
         record.cron ? (
-          <Select
-            size="small"
-            value={record.enabled}
-            style={{ width: 96 }}
-            onChange={(enabled) => props.onToggleTaskEnabled(record, enabled)}
-            options={[
-              { label: '已启用', value: true },
-              { label: '已禁用', value: false },
-            ]}
-          />
+          <Tag color="green">定时执行</Tag>
         ) : (
-          <Text type="secondary">仅手动</Text>
+          <Tag>仅手动</Tag>
         ),
     },
     {
@@ -170,10 +153,7 @@ export function TasksPage(props: TasksPageProps) {
             <Select
               value={props.serviceFilter}
               style={{ width: 260 }}
-              onChange={(value) => {
-                setSelectedRowKeys([]);
-                props.onFilterChange(value);
-              }}
+              onChange={(value) => props.onFilterChange(value)}
               options={[
                 { label: '全部服务', value: 'all' },
                 ...props.services.map((service) => ({
@@ -184,32 +164,9 @@ export function TasksPage(props: TasksPageProps) {
             />
             <Button
               icon={<ClearOutlined />}
-              onClick={() => {
-                setSelectedRowKeys([]);
-                props.onResetFilters();
-              }}
+              onClick={() => props.onResetFilters()}
             >
               重置
-            </Button>
-            <Button
-              disabled={!selectedScheduledTaskIds.length}
-              loading={props.bulkUpdating}
-              onClick={() => {
-                props.onBulkUpdateTasksEnabled(selectedScheduledTaskIds, true);
-                setSelectedRowKeys([]);
-              }}
-            >
-              批量启用
-            </Button>
-            <Button
-              disabled={!selectedScheduledTaskIds.length}
-              loading={props.bulkUpdating}
-              onClick={() => {
-                props.onBulkUpdateTasksEnabled(selectedScheduledTaskIds, false);
-                setSelectedRowKeys([]);
-              }}
-            >
-              批量禁用
             </Button>
             <Button icon={<ReloadOutlined />} onClick={props.onRefresh}>
               刷新
@@ -229,13 +186,6 @@ export function TasksPage(props: TasksPageProps) {
           columns={columns}
           dataSource={props.tasks}
           pagination={pagination}
-          rowSelection={{
-            selectedRowKeys,
-            getCheckboxProps: (record) => ({
-              disabled: !record.cron,
-            }),
-            onChange: (keys) => setSelectedRowKeys(keys),
-          }}
         />
       </Card>
 

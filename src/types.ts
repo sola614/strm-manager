@@ -49,7 +49,6 @@ export interface SyncTaskFormValues {
   downloadSubtitles: boolean;
   requestDelaySeconds: string;
   overwriteExisting: boolean;
-  enabled: boolean;
   notifyEnabled: boolean;
   callbackUrl: string;
 }
